@@ -109,7 +109,7 @@
         <h1 class="title">Boomerman Online</h1>
         <p class="subtitle">Explosez vos adversaires dans ce jeu multijoueur inspiré du classique Bomberman!</p>
         
-        <a href="index.html" class="play-button">JOUER MAINTENANT</a>
+        <a href="game.html" class="play-button">JOUER MAINTENANT</a>
         
         <div class="game-status">
             <strong>Statut du jeu:</strong>
@@ -151,7 +151,7 @@
             const statusIndicator = document.getElementById('status-indicator');
             
             // Vérifier si on peut accéder à index.html
-            fetch('index.html')
+            fetch('game.html')
                 .then(response => {
                     if (response.ok) {
                         statusIndicator.textContent = 'Le jeu est opérationnel! ✅';
