@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boomerman Online - Accueil</title>
+    <style>
+        body {
+            background-color: #111;
+            font-family: 'Courier New', monospace;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .title {
+            font-size: 36px;
+            color: #ff6b6b;
+            margin: 20px 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 3px 3px 0px #000;
+        }
+        
+        .subtitle {
+            font-size: 18px;
+            color: #4ecdc4;
+            margin-bottom: 30px;
+        }
+        
+        .play-button {
+            display: inline-block;
+            background-color: #ff6b6b;
+            color: white;
+            padding: 15px 30px;
+            font-size: 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+            box-shadow: 0 4px 0 #d44d4d;
+            transition: all 0.2s;
+        }
+        
+        .play-button:hover {
+            background-color: #ff8585;
+            transform: translateY(-2px);
+        }
+        
+        .play-button:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #d44d4d;
+        }
+        
+        .info-box {
+            background-color: #222;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+            text-align: left;
+        }
+        
+        .section-title {
+            color: #ff6b6b;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+            margin-top: 0;
+        }
+        
+        .game-status {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            color: #4ecdc4;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        
+        .control-group {
+            margin: 10px;
+            padding: 10px;
+            background-color: #333;
+            border-radius: 5px;
+            min-width: 200px;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Boomerman Online</h1>
+        <p class="subtitle">Explosez vos adversaires dans ce jeu multijoueur inspiré du classique Bomberman!</p>
+        
+        <a href="index.html" class="play-button">JOUER MAINTENANT</a>
+        
+        <div class="game-status">
+            <strong>Statut du jeu:</strong>
+            <span id="status-indicator">Vérification de la connexion...</span>
+        </div>
+        
+        <div class="info-box">
+            <h2 class="section-title">À propos du jeu</h2>
+            <p>Boomerman Online est un jeu de type Bomberman où vous pouvez:</p>
+            <ul>
+                <li>Jouer en solo contre une IA</li>
+                <li>Jouer en multijoueur avec vos amis</li>
+                <li>Créer et partager des parties via un code unique</li>
+            </ul>
+            
+            <h2 class="section-title">Comment jouer</h2>
+            <div class="controls">
+                <div class="control-group">
+                    <h3>Joueur 1</h3>
+                    <p>Déplacement: ZQSD</p>
+                    <p>Poser bombe: ESPACE</p>
+                </div>
+                <div class="control-group">
+                    <h3>Joueur 2</h3>
+                    <p>Déplacement: Flèches</p>
+                    <p>Poser bombe: ESPACE</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Développé par pimric © 2024</p>
+        </div>
+    </div>
+    
+    <script>
+        // Script pour vérifier si le jeu est fonctionnel
+        window.addEventListener('DOMContentLoaded', function() {
+            const statusIndicator = document.getElementById('status-indicator');
+            
+            // Vérifier si on peut accéder à index.html
+            fetch('index.html')
+                .then(response => {
+                    if (response.ok) {
+                        statusIndicator.textContent = 'Le jeu est opérationnel! ✅';
+                        statusIndicator.style.color = '#4ecdc4';
+                    } else {
+                        statusIndicator.textContent = 'Problème d\'accès au jeu ❌';
+                        statusIndicator.style.color = '#ff6b6b';
+                    }
+                })
+                .catch(error => {
+                    statusIndicator.textContent = 'Impossible de se connecter au jeu ❌';
+                    statusIndicator.style.color = '#ff6b6b';
+                    console.error('Erreur:', error);
+                });
+        });
+    </script>
+</body>
+</html>
