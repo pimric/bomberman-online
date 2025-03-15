@@ -72,3 +72,25 @@ input {
     0% { transform: scale(0.5); opacity: 1; }
     100% { transform: scale(1.5); opacity: 0; }
 }
+
+.gameButton {
+    background-color: #ff6b6b;
+    color: white;
+    padding: 8px 16px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    margin: 5px;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    box-shadow: 0 3px 0 #d44d4d;
+}
+
+.gameButton:hover {
+    background-color: #ff8585;
+}
+
+.gameButton:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #d44d4d;
+}

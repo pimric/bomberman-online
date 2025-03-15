@@ -72,16 +72,32 @@ function updatePlayerPosition(playerData, dx, dy) {
 
 // Mettre à jour l'état du jeu
 function update() {
-    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
-    
-    const player = gameState.players[gameState.playerId];
-    if (!player || !player.alive) {
-        // Si le joueur est mort et qu'on est en mode IA, afficher le message approprié
-        if (aiMode && aiMoveInterval) {
-            clearInterval(aiMoveInterval);
-            gameInfo.textContent = `Game Over - Vous avez perdu !`;
+    function update() {
+        if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+        
+        const player = gameState.players[gameState.playerId];
+        if (!player || !player.alive) {
+            // Si le joueur est mort et qu'on est en mode IA, afficher le message approprié
+            if (aiMode && aiMoveInterval) {
+                clearInterval(aiMoveInterval);
+                gameInfo.textContent = `Game Over - Vous avez perdu !`;
+                // Assurer que les boutons de contrôle sont visibles
+                document.getElementById('gameControls').style.display = 'block';
+            }
+            return;
         }
-        return;
+        
+        // Vérifier si l'IA est morte (en mode IA)
+        if (aiMode && gameState.players[aiPlayerId] && !gameState.players[aiPlayerId].alive) {
+            if (aiMoveInterval) {
+                clearInterval(aiMoveInterval);
+                gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
+                // Assurer que les boutons de contrôle sont visibles
+                document.getElementById('gameControls').style.display = 'block';
+            }
+        }
+        
+        // Le reste du code update...
     }
     
     // Vérifier si l'IA est morte (en mode IA)

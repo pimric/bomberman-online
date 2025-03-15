@@ -138,4 +138,72 @@ function joinGame(roomId, playerId) {
     
     // Cacher les contrôles de salle
     document.getElementById('roomControls').style.display = 'none';
+
+       // Cacher les contrôles de salle et afficher les contrôles de jeu
+    document.getElementById('roomControls').style.display = 'none';
+    document.getElementById('gameControls').style.display = 'block';
+    
 }
+
+// Fonction pour redémarrer la partie
+function restartGame() {
+    // Si on est en mode solo avec IA
+    if (aiMode) {
+        // Nettoyer l'intervalle de l'IA pour éviter les doublons
+        if (aiMoveInterval) {
+            clearInterval(aiMoveInterval);
+        }
+        
+        // Régénérer une carte et réinitialiser les joueurs
+        const roomId = 'solo_' + generateId();
+        gameState.roomId = roomId;
+        
+        // Créer une nouvelle partie
+        const gameRef = database.ref(`games/${roomId}`);
+        gameRef.set({
+            map: generateMap(),
+            players: {
+                player1: createPlayer(0, 0, '#ff6b6b'),
+                [aiPlayerId]: createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4')
+            },
+            bombs: {},
+            explosions: {},
+            gameStarted: true
+        });
+        
+        // Rejoindre la partie
+        joinGame(roomId, 'player1');
+        gameInfo.textContent = `Mode solo contre l'IA - Vous êtes le joueur 1 (rouge)`;
+        
+        // Démarrer l'IA
+        startAI();
+    } else {
+        // Pour les parties multijoueur, revenir à l'écran de création de partie
+        document.getElementById('roomControls').style.display = 'block';
+        document.getElementById('gameControls').style.display = 'none';
+        
+        // Déconnecter la partie actuelle
+        if (gameState.roomId) {
+            database.ref(`games/${gameState.roomId}`).off();
+        }
+        
+        // Réinitialiser l'état
+        gameState.roomId = null;
+        gameState.playerId = null;
+        gameState.map = [];
+        gameState.players = {};
+        gameState.bombs = [];
+        gameState.explosions = [];
+        gameState.gameStarted = false;
+    }
+}
+
+// Fonction pour revenir au menu principal
+function returnToHome() {
+    // Rediriger vers la page d'accueil
+    window.location.href = 'index.html';
+}
+
+// Ajout des écouteurs d'événements pour les nouveaux boutons
+document.getElementById('restartBtn').addEventListener('click', restartGame);
+document.getElementById('homeBtn').addEventListener('click', returnToHome);
