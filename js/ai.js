@@ -48,39 +48,6 @@ function moveAI(aiPlayer) {
         const newY = aiPlayer.y + dir.dy;
         return isValidPosition(newX, newY);
     });
-}
-
-// L'IA place une bombe
-function placeAIBomb(aiPlayer) {
-    // Obtenir la position de la grille
-    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
-    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
-    
-    // Vérifier si une bombe est déjà présente à cet endroit
-    const bombsAtPosition = gameState.bombs.filter(bomb => 
-        bomb.x === gridX && bomb.y === gridY
-    );
-    
-    // Compte le nombre de bombes actives de l'IA
-    const activeBombs = gameState.bombs.filter(bomb => 
-        bomb.playerId === aiPlayerId
-    );
-    
-    // Placer la bombe si possible
-    if (bombsAtPosition.length === 0 && activeBombs.length < aiPlayer.maxBombs) {
-        const newBomb = {
-            id: generateId(),
-            playerId: aiPlayerId,
-            x: gridX,
-            y: gridY,
-            range: aiPlayer.bombRange,
-            timer: Date.now() + BOMB_TIMER
-        };
-        
-        // Ajouter la bombe au jeu
-        database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
-    }
-}
     
     // Si aucune direction valide, rester immobile
     if (validDirections.length === 0) return;
@@ -143,3 +110,36 @@ function placeAIBomb(aiPlayer) {
         x: aiPlayer.x,
         y: aiPlayer.y
     });
+}
+
+// L'IA place une bombe
+function placeAIBomb(aiPlayer) {
+    // Obtenir la position de la grille
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    
+    // Vérifier si une bombe est déjà présente à cet endroit
+    const bombsAtPosition = gameState.bombs.filter(bomb => 
+        bomb.x === gridX && bomb.y === gridY
+    );
+    
+    // Compte le nombre de bombes actives de l'IA
+    const activeBombs = gameState.bombs.filter(bomb => 
+        bomb.playerId === aiPlayerId
+    );
+    
+    // Placer la bombe si possible
+    if (bombsAtPosition.length === 0 && activeBombs.length < aiPlayer.maxBombs) {
+        const newBomb = {
+            id: generateId(),
+            playerId: aiPlayerId,
+            x: gridX,
+            y: gridY,
+            range: aiPlayer.bombRange,
+            timer: Date.now() + BOMB_TIMER
+        };
+        
+        // Ajouter la bombe au jeu
+        database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+    }
+}
