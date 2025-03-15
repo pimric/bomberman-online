@@ -72,32 +72,84 @@ function updatePlayerPosition(playerData, dx, dy) {
 
 // Mettre à jour l'état du jeu
 function update() {
-    function update() {
-        if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
-        
-        const player = gameState.players[gameState.playerId];
-        if (!player || !player.alive) {
-            // Si le joueur est mort et qu'on est en mode IA, afficher le message approprié
-            if (aiMode && aiMoveInterval) {
-                clearInterval(aiMoveInterval);
-                gameInfo.textContent = `Game Over - Vous avez perdu !`;
-                // Assurer que les boutons de contrôle sont visibles
-                document.getElementById('gameControls').style.display = 'block';
-            }
-            return;
+  // Mettre à jour l'état du jeu
+function update() {
+    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+    
+    const player = gameState.players[gameState.playerId];
+    if (!player || !player.alive) {
+        // Si le joueur est mort et qu'on est en mode IA, afficher le message approprié
+        if (aiMode && aiMoveInterval) {
+            clearInterval(aiMoveInterval);
+            gameInfo.textContent = `Game Over - Vous avez perdu !`;
+            // Assurer que les boutons de contrôle sont visibles
+            document.getElementById('gameControls').style.display = 'block';
         }
-        
-        // Vérifier si l'IA est morte (en mode IA)
-        if (aiMode && gameState.players[aiPlayerId] && !gameState.players[aiPlayerId].alive) {
-            if (aiMoveInterval) {
-                clearInterval(aiMoveInterval);
-                gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
-                // Assurer que les boutons de contrôle sont visibles
-                document.getElementById('gameControls').style.display = 'block';
-            }
+        return;
+    }
+    
+    // Vérifier si l'IA est morte (en mode IA)
+    if (aiMode && gameState.players[aiPlayerId] && !gameState.players[aiPlayerId].alive) {
+        if (aiMoveInterval) {
+            clearInterval(aiMoveInterval);
+            gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
+            // Assurer que les boutons de contrôle sont visibles
+            document.getElementById('gameControls').style.display = 'block';
         }
-        
-        // Le reste du code update...
+    }
+    
+    let playerMoved = false;
+    
+    // Mouvement selon le joueur
+    if (gameState.playerId === 'player1') {
+        // Joueur 1 (ZQSD)
+        if (gameState.keys['z']) {
+            updatePlayerPosition(player, 0, -PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['s']) {
+            updatePlayerPosition(player, 0, PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['q']) {
+            updatePlayerPosition(player, -PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+        if (gameState.keys['d']) {
+            updatePlayerPosition(player, PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+    } else {
+        // Joueur 2 (Flèches)
+        if (gameState.keys['ArrowUp']) {
+            updatePlayerPosition(player, 0, -PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['ArrowDown']) {
+            updatePlayerPosition(player, 0, PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['ArrowLeft']) {
+            updatePlayerPosition(player, -PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+        if (gameState.keys['ArrowRight']) {
+            updatePlayerPosition(player, PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+    }
+    
+    // Mettre à jour la position sur Firebase si le joueur a bougé
+    if (playerMoved) {
+        database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
+            x: player.x,
+            y: player.y
+        });
+    }
+    
+    // Mettre à jour les explosions
+    updateExplosions();
+}
     }
     
     // Vérifier si l'IA est morte (en mode IA)
