@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boomerman Online</title>
+    <style>
+        body {
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            color: white;
+        }
+        
+        #gameContainer {
+            text-align: center;
+        }
+        
+        canvas {
+            border: 4px solid #444;
+            background-color: #000;
+            image-rendering: pixelated;
+        }
+        
+        h1 {
+            font-size: 24px;
+            color: #ff6b6b;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #000;
+        }
+        
+        #roomControls {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #222;
+            border-radius: 5px;
+        }
+        
+        button {
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background-color: #ff8585;
+        }
+        
+        input {
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <h1>Boomerman Online</h1>
+        
+        <div id="roomControls">
+            <input type="text" id="roomInput" placeholder="Code de partie">
+            <button id="createBtn">Créer partie</button>
+            <button id="joinBtn">Rejoindre partie</button>
+        </div>
+        
+        <div id="gameInfo"></div>
+        <canvas id="gameCanvas" width="480" height="480"></canvas>
+    </div>
+
+    <!-- Import Firebase SDK -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
+
+    <script>
+        // Configuration du jeu
+        const GRID_SIZE = 15;
+        const TILE_SIZE = 32;
+        const PLAYER_SPEED = 3;
+
+        // Obtenir le contexte du canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameInfo = document.getElementById('gameInfo');
+
+        // Référence aux contrôles d'interface
+        const roomInput = document.getElementById('roomInput');
+        const createBtn = document.getElementById('createBtn');
+        const joinBtn = document.getElementById('joinBtn');
+
+        // Définir les types de cases
+        const TILE_TYPES = {
+            EMPTY: 0,
+            WALL: 1,
+            BRICK: 2
+        };
+
+        // État du jeu local
+        let gameState = {
+            roomId: null,
+            playerId: null,
+            map: [],
+            players: {},
+            bombs: [],
+            gameStarted: false,
+            keys: {}
+        };
+
+        // Configuration Firebase (à remplacer par vos propres identifiants)
+        const firebaseConfig = {
+  apiKey: "AIzaSyDEDfD0gETLAra2wu9e0V8YVECdshVWAEc",
+  authDomain: "bomberman-10e44.firebaseapp.com",
+  projectId: "bomberman-10e44",
+  storageBucket: "bomberman-10e44.firebasestorage.app",
+  messagingSenderId: "734188613745",
+  appId: "1:734188613745:web:96b85d282821b3613d2bd0"
+};
+
+        // Initialiser Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Générer une carte aléatoire
+        function generateMap() {
+            const map = [];
+            
+            for (let y = 0; y < GRID_SIZE; y++) {
+                const row = [];
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (x % 2 === 0 && y % 2 === 0) {
+                        row.push(TILE_TYPES.WALL);
+                    } 
+                    else if ((x < 2 && y < 2) || (x > GRID_SIZE - 3 && y > GRID_SIZE - 3)) {
+                        row.push(TILE_TYPES.EMPTY);
+                    }
+                    else {
+                        row.push(Math.random() < 0.7 ? TILE_TYPES.BRICK : TILE_TYPES.EMPTY);
+                    }
+                }
+                map.push(row);
+            }
+            
+            return map;
+        }
+
+        // Créer un joueur
+        function createPlayer(x, y, color) {
+            return {
+                x: x * TILE_SIZE + TILE_SIZE / 2,
+                y: y * TILE_SIZE + TILE_SIZE / 2,
+                radius: TILE_SIZE / 2 - 4,
+                color: color,
+                maxBombs: 1,
+                bombRange: 1,
+                alive: true
+            };
+        }
+
+        // Générer un ID unique
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        // Créer une nouvelle partie
+        createBtn.addEventListener('click', () => {
+            // Générer un code de salle si non spécifié
+            const roomId = roomInput.value || generateId();
+            roomInput.value = roomId;
+            gameState.roomId = roomId;
+            gameState.playerId = 'player1';
+            
+            // Créer la partie dans Firebase
+            const gameRef = database.ref(`games/${roomId}`);
+            gameRef.set({
+                map: generateMap(),
+                players: {
+                    player1: createPlayer(0, 0, '#ff6b6b')
+                },
+                bombs: [],
+                gameStarted: false
+            });
+            
+            // Rejoindre la partie
+            joinGame(roomId, 'player1');
+            gameInfo.textContent = `Partie créée ! Code: ${roomId} - En attente d'un autre joueur...`;
+        });
+
+        // Rejoindre une partie existante
+        joinBtn.addEventListener('click', () => {
+            const roomId = roomInput.value;
+            if (!roomId) {
+                alert('Veuillez entrer un code de partie');
+                return;
+            }
+            
+            // Vérifier si la partie existe
+            const gameRef = database.ref(`games/${roomId}`);
+            gameRef.once('value', (snapshot) => {
+                const gameData = snapshot.val();
+                if (!gameData) {
+                    alert('Partie non trouvée');
+                    return;
+                }
+                
+                // Vérifier si la partie est complète
+                if (gameData.players && gameData.players.player2) {
+                    alert('Partie déjà complète');
+                    return;
+                }
+                
+                // Rejoindre en tant que joueur 2
+                gameState.roomId = roomId;
+                gameState.playerId = 'player2';
+                
+                // Ajouter le joueur 2 à la partie
+                gameRef.child('players/player2').set(createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4'));
+                gameRef.child('gameStarted').set(true);
+                
+                // Rejoindre la partie
+                joinGame(roomId, 'player2');
+            });
+        });
+
+        // Rejoindre une partie et configurer les écouteurs
+        function joinGame(roomId, playerId) {
+            const gameRef = database.ref(`games/${roomId}`);
+            
+            // Écouter les changements d'état du jeu
+            gameRef.on('value', (snapshot) => {
+                const gameData = snapshot.val();
+                if (!gameData) return;
+                
+                // Mettre à jour l'état du jeu local
+                gameState.map = gameData.map;
+                gameState.players = gameData.players;
+                gameState.bombs = gameData.bombs || [];
+                gameState.gameStarted = gameData.gameStarted;
+                
+                // Afficher un message quand le jeu commence
+                if (gameState.gameStarted && gameData.players.player1 && gameData.players.player2) {
+                    gameInfo.textContent = `Partie en cours - Vous êtes le joueur ${playerId === 'player1' ? '1 (rouge)' : '2 (bleu)'}`;
+                }
+            });
+            
+            // Configurer les déconnexions
+            gameRef.child(`players/${playerId}`).onDisconnect().remove();
+            database.ref(`.info/connected`).on('value', (snapshot) => {
+                if (snapshot.val() === false) return;
+                
+                // Nettoyer la partie si tous les joueurs sont déconnectés
+                gameRef.onDisconnect().remove();
+            });
+            
+            // Cacher les contrôles de salle
+            document.getElementById('roomControls').style.display = 'none';
+        }
+
+        // Gérer les entrées clavier
+        window.addEventListener('keydown', (e) => {
+            gameState.keys[e.key] = true;
+            
+            // Touche espace pour poser une bombe
+            if (e.key === ' ' && gameState.gameStarted) {
+                placeBomb();
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            gameState.keys[e.key] = false;
+        });
+
+        // Vérifier si une position est valide
+        function isValidPosition(x, y) {
+            const gridX = Math.floor(x / TILE_SIZE);
+            const gridY = Math.floor(y / TILE_SIZE);
+            
+            // Vérifier si on est dans les limites de la carte
+            if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) {
+                return false;
+            }
+            
+            // Vérifier s'il y a un mur ou une brique
+            return gameState.map[gridY][gridX] === TILE_TYPES.EMPTY;
+        }
+
+        // Mettre à jour la position du joueur
+        function updatePlayerPosition(playerData, dx, dy) {
+            const newX = playerData.x + dx;
+            const newY = playerData.y + dy;
+            
+            // Vérifier les collisions pour X et Y séparément
+            if (isValidPosition(newX, playerData.y)) {
+                playerData.x = newX;
+            }
+            
+            if (isValidPosition(playerData.x, newY)) {
+                playerData.y = newY;
+            }
+        }
+
+        // Placer une bombe
+        function placeBomb() {
+            if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+            
+            const player = gameState.players[gameState.playerId];
+            if (!player || !player.alive) return;
+            
+            // Obtenir la position de la grille
+            const gridX = Math.floor(player.x / TILE_SIZE);
+            const gridY = Math.floor(player.y / TILE_SIZE);
+            
+            // Vérifier si une bombe est déjà présente à cet endroit
+            const bombsAtPosition = gameState.bombs.filter(bomb => 
+                bomb.x === gridX && bomb.y === gridY && bomb.playerId === gameState.playerId
+            );
+            
+            // Compte le nombre de bombes actives de ce joueur
+            const activeBombs = gameState.bombs.filter(bomb => 
+                bomb.playerId === gameState.playerId
+            );
+            
+            // Placer la bombe si possible
+            if (bombsAtPosition.length === 0 && activeBombs.length < player.maxBombs) {
+                const newBomb = {
+                    id: generateId(),
+                    playerId: gameState.playerId,
+                    x: gridX,
+                    y: gridY,
+                    range: player.bombRange,
+                    timer: 3 // Secondes avant explosion
+                };
+                
+                // Ajouter la bombe au jeu
+                database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+            }
+        }
+
+        // Mettre à jour l'état du jeu
+        function update() {
+            if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+            
+            const player = gameState.players[gameState.playerId];
+            if (!player || !player.alive) return;
+            
+            let playerMoved = false;
+            
+            // Mouvement selon le joueur
+            if (gameState.playerId === 'player1') {
+                // Joueur 1 (ZQSD)
+                if (gameState.keys['z']) {
+                    updatePlayerPosition(player, 0, -PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['s']) {
+                    updatePlayerPosition(player, 0, PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['q']) {
+                    updatePlayerPosition(player, -PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+                if (gameState.keys['d']) {
+                    updatePlayerPosition(player, PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+            } else {
+                // Joueur 2 (Flèches)
+                if (gameState.keys['ArrowUp']) {
+                    updatePlayerPosition(player, 0, -PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['ArrowDown']) {
+                    updatePlayerPosition(player, 0, PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['ArrowLeft']) {
+                    updatePlayerPosition(player, -PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+                if (gameState.keys['ArrowRight']) {
+                    updatePlayerPosition(player, PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+            }
+            
+            // Mettre à jour la position sur Firebase si le joueur a bougé
+            if (playerMoved) {
+                database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
+                    x: player.x,
+                    y: player.y
+                });
+            }
+        }
+
+        // Dessiner le jeu
+        function render() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Si pas de jeu en cours, afficher un écran d'attente
+            if (!gameState.map || gameState.map.length === 0) {
+                ctx.fillStyle = '#333';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '16px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText('En attente de la création/connexion à une partie...', canvas.width/2, canvas.height/2);
+                return;
+            }
+            
+            // Dessiner la carte
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const tileType = gameState.map[y][x];
+                    const tileX = x * TILE_SIZE;
+                    const tileY = y * TILE_SIZE;
+                    
+                    // Couleur selon le type de case
+                    if (tileType === TILE_TYPES.WALL) {
+                        ctx.fillStyle = '#333';
+                    } else if (tileType === TILE_TYPES.BRICK) {
+                        ctx.fillStyle = '#8B4513';
+                    } else {
+                        ctx.fillStyle = '#222';
+                    }
+                    
+                    // Dessiner la case
+                    ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                    
+                    // Ajouter une bordure
+                    ctx.strokeStyle = '#111';
+                    ctx.strokeRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                }
+            }
+            
+            // Dessiner les bombes
+            if (gameState.bombs) {
+                for (const bomb of gameState.bombs) {
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath();
+                    ctx.arc(
+                        bomb.x * TILE_SIZE + TILE_SIZE/2, 
+                        bomb.y * TILE_SIZE + TILE_SIZE/2, 
+                        TILE_SIZE/3, 
+                        0, 
+                        Math.PI * 2
+                    );
+                    ctx.fill();
+                    
+                    // Dessiner la mèche
+                    ctx.strokeStyle = '#FFA500';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        bomb.x * TILE_SIZE + TILE_SIZE/2, 
+                        bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/3
+                    );
+                    ctx.lineTo(
+                        bomb.x * TILE_SIZE + TILE_SIZE/2, 
+                        bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/2
+                    );
+                    ctx.stroke();
+                }
+            }
+            
+            // Dessiner les joueurs
+            for (const playerId in gameState.players) {
+                const playerData = gameState.players[playerId];
+                if (playerData && playerData.alive) {
+                    ctx.fillStyle = playerData.color;
+                    ctx.beginPath();
+                    ctx.arc(playerData.x, playerData.y, playerData.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Boucle de jeu principale
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Démarrer le jeu
+        gameLoop();
+    </script>
+</body>
+</html>
