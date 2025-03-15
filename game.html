@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boomerman Online</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <h1>Boomerman Online</h1>
+        
+        <div id="roomControls">
+            <input type="text" id="roomInput" placeholder="Code de partie">
+            <button id="createBtn">Créer partie</button>
+            <button id="joinBtn">Rejoindre partie</button>
+            <button id="singlePlayerBtn">Jouer contre l'IA</button>
+        </div>
+        
+        <div id="gameInfo"></div>
+        <canvas id="gameCanvas" width="480" height="480"></canvas>
+    </div>
+
+    <!-- Import Firebase SDK -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
+
+    <!-- Import Game Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/bomb.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/multiplayer.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
