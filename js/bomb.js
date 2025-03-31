@@ -166,7 +166,8 @@ function renderBombs() {
         const timeLeft = bomb.timer - Date.now();
         const scale = 1 + 0.2 * Math.sin(timeLeft / 200);
         
-        ctx.fillStyle = '#000';
+        // Dessiner une noix de coco comme bombe
+        ctx.fillStyle = '#654321'; // Marron pour la noix de coco
         ctx.beginPath();
         ctx.arc(
             bomb.x * TILE_SIZE + TILE_SIZE/2, 
@@ -177,19 +178,48 @@ function renderBombs() {
         );
         ctx.fill();
         
-        // Dessiner la mèche
-        ctx.strokeStyle = '#FFA500';
-        ctx.lineWidth = 2;
+        // Ajouter des détails à la noix de coco
+        ctx.fillStyle = '#543210';
+        ctx.beginPath();
+        ctx.arc(
+            bomb.x * TILE_SIZE + TILE_SIZE/2 - 3, 
+            bomb.y * TILE_SIZE + TILE_SIZE/2 - 3, 
+            2, 
+            0, 
+            Math.PI * 2
+        );
+        ctx.arc(
+            bomb.x * TILE_SIZE + TILE_SIZE/2 + 3, 
+            bomb.y * TILE_SIZE + TILE_SIZE/2 - 3, 
+            2, 
+            0, 
+            Math.PI * 2
+        );
+        ctx.arc(
+            bomb.x * TILE_SIZE + TILE_SIZE/2, 
+            bomb.y * TILE_SIZE + TILE_SIZE/2 + 3, 
+            2, 
+            0, 
+            Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Ajouter une petite feuille comme mèche
+        ctx.fillStyle = '#00AA00';
         ctx.beginPath();
         ctx.moveTo(
             bomb.x * TILE_SIZE + TILE_SIZE/2, 
             bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/3
         );
         ctx.lineTo(
-            bomb.x * TILE_SIZE + TILE_SIZE/2, 
+            bomb.x * TILE_SIZE + TILE_SIZE/2 + 5, 
             bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/2
         );
-        ctx.stroke();
+        ctx.lineTo(
+            bomb.x * TILE_SIZE + TILE_SIZE/2 - 5, 
+            bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/2 - 2
+        );
+        ctx.fill();
     }
 }
 
@@ -208,7 +238,7 @@ function renderExplosions() {
         
         // Dessiner chaque cellule de l'explosion
         for (const cell of explosion.cells) {
-            // Utiliser un dégradé pour l'effet d'explosion
+            // Utiliser un dégradé pour l'effet d'explosion tropicale
             const gradient = ctx.createRadialGradient(
                 cell.x * TILE_SIZE + TILE_SIZE/2,
                 cell.y * TILE_SIZE + TILE_SIZE/2,
@@ -218,9 +248,10 @@ function renderExplosions() {
                 TILE_SIZE/2
             );
             
+            // Couleurs chaudes pour une explosion tropicale - jaune, orange, rouge
             gradient.addColorStop(0, `rgba(255, 255, 0, ${opacity})`);
-            gradient.addColorStop(0.7, `rgba(255, 165, 0, ${opacity})`);
-            gradient.addColorStop(1, `rgba(255, 0, 0, ${opacity})`);
+            gradient.addColorStop(0.6, `rgba(255, 165, 0, ${opacity * 0.9})`);
+            gradient.addColorStop(1, `rgba(255, 69, 0, ${opacity * 0.7})`);
             
             ctx.fillStyle = gradient;
             ctx.fillRect(
@@ -229,6 +260,20 @@ function renderExplosions() {
                 TILE_SIZE, 
                 TILE_SIZE
             );
+            
+            // Ajouter des particules façon "confettis" pour effet reggae
+            if (Math.random() < 0.4) {
+                const particleColors = ['#00FF00', '#FFFF00', '#FF0000']; // Vert, jaune, rouge (couleurs reggae)
+                const color = particleColors[Math.floor(Math.random() * particleColors.length)];
+                
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    cell.x * TILE_SIZE + Math.random() * TILE_SIZE, 
+                    cell.y * TILE_SIZE + Math.random() * TILE_SIZE, 
+                    3, 
+                    3
+                );
+            }
         }
     }
 }

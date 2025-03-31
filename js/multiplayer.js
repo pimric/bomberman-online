@@ -92,7 +92,7 @@ function createSinglePlayerGame() {
     
     // Rejoindre la partie
     joinGame(roomId, 'player1');
-    gameInfo.textContent = `Mode solo contre l'IA - Vous êtes le joueur 1 (rouge)`;
+    gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le joueur 1 (rouge)`;
     
     // Démarrer l'IA
     startAI();
@@ -120,9 +120,9 @@ function joinGame(roomId, playerId) {
         // Afficher un message quand le jeu commence
         if (gameState.gameStarted) {
             if (aiMode) {
-                gameInfo.textContent = `Mode solo contre l'IA - Vous êtes le joueur 1 (rouge)`;
+                gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le joueur 1 (rouge)`;
             } else if (gameData.players.player1 && gameData.players.player2) {
-                gameInfo.textContent = `Partie en cours - Vous êtes le joueur ${playerId === 'player1' ? '1 (rouge)' : '2 (bleu)'}`;
+                gameInfo.textContent = `Combat sur l'île - Vous êtes le ${playerId === 'player1' ? 'Rasta Rouge' : 'Surfeur Bleu'}`;
             }
         }
     });
@@ -136,13 +136,9 @@ function joinGame(roomId, playerId) {
         gameRef.onDisconnect().remove();
     });
     
-    // Cacher les contrôles de salle
+    // Cacher les contrôles de salle et cacher les contrôles de jeu jusqu'à la fin
     document.getElementById('roomControls').style.display = 'none';
-
-       // Cacher les contrôles de salle et afficher les contrôles de jeu
-    document.getElementById('roomControls').style.display = 'none';
-    document.getElementById('gameControls').style.display = 'block';
-    
+    document.getElementById('gameControls').style.display = 'none';
 }
 
 // Fonction pour redémarrer la partie
@@ -173,10 +169,13 @@ function restartGame() {
         
         // Rejoindre la partie
         joinGame(roomId, 'player1');
-        gameInfo.textContent = `Mode solo contre l'IA - Vous êtes le joueur 1 (rouge)`;
+        gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le joueur 1 (rouge)`;
         
         // Démarrer l'IA
         startAI();
+        
+        // Cacher les contrôles de jeu jusqu'à la fin de partie
+        document.getElementById('gameControls').style.display = 'none';
     } else {
         // Pour les parties multijoueur, revenir à l'écran de création de partie
         document.getElementById('roomControls').style.display = 'block';

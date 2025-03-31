@@ -3,38 +3,1359 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Boomerman Online</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <title>Island Bomber</title>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #0099cc, #006699);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            color: white;
+            background-image: url('https://cdnjs.cloudflare.com/ajax/libs/line-awesome/1.3.0/svg/palm-tree.svg');
+            background-repeat: repeat;
+            background-size: 100px;
+            background-blend-mode: soft-light;
+        }
+
+        #gameContainer {
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border: 3px solid #ffd700;
+        }
+
+        canvas {
+            border: 4px solid #ffd700;
+            background-color: #f9e8b0; /* Sand color */
+            image-rendering: pixelated;
+            border-radius: 8px;
+        }
+
+        h1 {
+            font-family: 'Pacifico', cursive;
+            font-size: 36px;
+            color: #ffd700; /* Gold color for reggae vibe */
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #000, 4px 4px 0px #006699;
+            font-weight: bold;
+        }
+
+        #roomControls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: rgba(34, 139, 34, 0.7); /* Forest green with opacity */
+            border-radius: 10px;
+            border: 2px dashed #ffd700;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #ff9900, #ff6600);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            margin: 0 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-weight: bold;
+            font-size: 14px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 0 #cc5200;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: linear-gradient(to bottom, #ffaa33, #ff7722);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #cc5200;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #cc5200;
+        }
+
+        input {
+            background-color: #ffe6cc;
+            color: #663300;
+            border: 2px solid #ff9900;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-size: 14px;
+            width: 150px;
+        }
+
+        input::placeholder {
+            color: #cc8800;
+        }
+
+        /* Styles pour les explosions */
+        .explosion-animation {
+            position: absolute;
+            background-color: rgba(255, 165, 0, 0.7);
+            border-radius: 50%;
+            animation: explode 0.5s ease-out;
+        }
+
+        @keyframes explode {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        .gameButton {
+            background: linear-gradient(to bottom, #ff9900, #ff6600);
+            color: white;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            margin: 8px;
+            cursor: pointer;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            box-shadow: 0 4px 0 #cc5200;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .gameButton:hover {
+            background: linear-gradient(to bottom, #ffaa33, #ff7722);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #cc5200;
+        }
+
+        .gameButton:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #cc5200;
+        }
+
+        #gameInfo {
+            background-color: rgba(255, 215, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            text-shadow: 1px 1px 0px #000;
+            letter-spacing: 1px;
+        }
+    </style>
 </head>
 <body>
     <div id="gameContainer">
-        <h1>Boomerman Online</h1>
+        <h1>Island Bomber</h1>
         
         <div id="roomControls">
             <input type="text" id="roomInput" placeholder="Code de partie">
             <button id="createBtn">Créer partie</button>
             <button id="joinBtn">Rejoindre partie</button>
-            <button id="singlePlayerBtn">Jouer contre l'IA</button>
+            <button id="singlePlayerBtn">Affronter le Pirate IA</button>
         </div>
         
-        <div id="gameInfo"></div>
+        <div id="gameInfo">Bienvenue sur l'île ! Prêt à exploser des noix de coco ?</div>
         <canvas id="gameCanvas" width="480" height="480"></canvas>
     </div>
 
     <div id="gameControls" style="display: none; margin-top: 10px;">
-        <button id="restartBtn" class="gameButton">Recommencer</button>
-        <button id="homeBtn" class="gameButton">Menu Principal</button>
+        <button id="restartBtn" class="gameButton">Nouvelle Partie</button>
+        <button id="homeBtn" class="gameButton">Retour à l'île</button>
     </div>
 
     <!-- Import Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
 
-    <!-- Import Game Scripts -->
-    <script src="js/config.js"></script>
-    <script src="js/bomb.js"></script>
-    <script src="js/ai.js"></script>
-    <script src="js/multiplayer.js"></script>
-    <script src="js/game.js"></script>
+    <script>
+        // Configuration du jeu
+        const GRID_SIZE = 15;
+        const TILE_SIZE = 32;
+        const PLAYER_SPEED = 3;
+
+        // Définir les types de cases
+        const TILE_TYPES = {
+            EMPTY: 0,  // Sable
+            WALL: 1,   // Palmiers
+            BRICK: 2   // Tonneaux
+        };
+
+        // Configuration des bombes
+        const BOMB_TIMER = 3000; // Délai avant explosion (ms)
+        const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
+
+        // Configuration de l'IA
+        const AI_MOVE_DELAY = 500; // Délai entre les mouvements de l'IA (ms)
+
+        // Configuration Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEDfD0gETLAra2wu9e0V8YVECdshVWAEc",
+            authDomain: "bomberman-10e44.firebaseapp.com",
+            projectId: "bomberman-10e44",
+            storageBucket: "bomberman-10e44.firebasestorage.app",
+            messagingSenderId: "734188613745",
+            appId: "1:734188613745:web:96b85d282821b3613d2bd0"
+        };
+
+        // Initialiser Firebase avec vos identifiants
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // État du jeu global
+        const gameState = {
+            roomId: null,
+            playerId: null,
+            map: [],
+            players: {},
+            bombs: [],
+            explosions: [],
+            gameStarted: false,
+            keys: {}
+        };
+
+        // Références DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameInfo = document.getElementById('gameInfo');
+        const roomInput = document.getElementById('roomInput');
+        const createBtn = document.getElementById('createBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const singlePlayerBtn = document.getElementById('singlePlayerBtn');
+
+        // Variables de l'IA
+        let aiMode = false;
+        let aiPlayerId = 'playerAI';
+        let aiMoveInterval;
+
+        // Générer une carte aléatoire avec des chemins garantis
+        function generateMap() {
+            const map = [];
+            
+            // Initialiser la carte avec des murs fixes et le reste vide
+            for (let y = 0; y < GRID_SIZE; y++) {
+                const row = [];
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (x % 2 === 0 && y % 2 === 0) {
+                        // Murs fixes qui ne peuvent pas être détruits (palmiers)
+                        row.push(TILE_TYPES.WALL);
+                    } else {
+                        // Tout le reste est vide au départ (sable)
+                        row.push(TILE_TYPES.EMPTY);
+                    }
+                }
+                map.push(row);
+            }
+            
+            // Garantir des zones de départ vides pour les joueurs
+            // Pour le joueur 1 (coin supérieur gauche)
+            map[0][0] = TILE_TYPES.EMPTY;
+            map[0][1] = TILE_TYPES.EMPTY;
+            map[1][0] = TILE_TYPES.EMPTY;
+            
+            // Pour l'IA ou le joueur 2 (coin inférieur droit)
+            map[GRID_SIZE-1][GRID_SIZE-1] = TILE_TYPES.EMPTY;
+            map[GRID_SIZE-1][GRID_SIZE-2] = TILE_TYPES.EMPTY;
+            map[GRID_SIZE-2][GRID_SIZE-1] = TILE_TYPES.EMPTY;
+            
+            // Ajouter des briques destructibles de manière aléatoire (tonneaux)
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    // Si c'est un emplacement vide (pas un palmier) et pas dans les zones de départ
+                    if (map[y][x] === TILE_TYPES.EMPTY && 
+                        !((x <= 1 && y <= 1) || (x >= GRID_SIZE-2 && y >= GRID_SIZE-2))) {
+                        
+                        // Probabilité de 60% d'avoir un tonneau
+                        if (Math.random() < 0.6) {
+                            map[y][x] = TILE_TYPES.BRICK;
+                        }
+                    }
+                }
+            }
+            
+            // Garantir un chemin entre le coin supérieur gauche et le coin inférieur droit
+            
+            // Chemin horizontal
+            for (let x = 2; x < GRID_SIZE - 2; x += 2) {
+                map[1][x] = TILE_TYPES.EMPTY;
+            }
+            
+            // Chemin vertical
+            for (let y = 3; y < GRID_SIZE - 1; y += 2) {
+                map[y][GRID_SIZE - 2] = TILE_TYPES.EMPTY;
+            }
+            
+            return map;
+        }
+
+        // Créer un joueur
+        function createPlayer(x, y, color) {
+            return {
+                x: x * TILE_SIZE + TILE_SIZE / 2,
+                y: y * TILE_SIZE + TILE_SIZE / 2,
+                radius: TILE_SIZE / 2 - 4,
+                color: color,
+                maxBombs: 1,
+                bombRange: 1,
+                alive: true
+            };
+        }
+
+        // Générer un ID unique
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        // Vérification de position améliorée
+        function isValidPosition(x, y) {
+            const gridX = Math.floor(x / TILE_SIZE);
+            const gridY = Math.floor(y / TILE_SIZE);
+            
+            // Vérifier si on est dans les limites de la carte
+            if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) {
+                return false;
+            }
+            
+            // Vérifier en tenant compte d'une "hitbox" légèrement plus petite que le joueur
+            const margin = 2; // Marge en pixels
+            
+            // Vérifier les quatre coins du joueur avec la marge
+            const points = [
+                { x: x - TILE_SIZE/2 + margin, y: y - TILE_SIZE/2 + margin }, // Coin supérieur gauche
+                { x: x + TILE_SIZE/2 - margin, y: y - TILE_SIZE/2 + margin }, // Coin supérieur droit
+                { x: x - TILE_SIZE/2 + margin, y: y + TILE_SIZE/2 - margin }, // Coin inférieur gauche
+                { x: x + TILE_SIZE/2 - margin, y: y + TILE_SIZE/2 - margin }  // Coin inférieur droit
+            ];
+            
+            // Vérifier chaque point
+            for (const point of points) {
+                const pointGridX = Math.floor(point.x / TILE_SIZE);
+                const pointGridY = Math.floor(point.y / TILE_SIZE);
+                
+                // Si ce point est hors des limites ou sur un obstacle
+                if (pointGridX < 0 || pointGridX >= GRID_SIZE || 
+                    pointGridY < 0 || pointGridY >= GRID_SIZE ||
+                    gameState.map[pointGridY][pointGridX] !== TILE_TYPES.EMPTY) {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+
+        // Mettre à jour la position du joueur avec une meilleure gestion des collisions
+        function updatePlayerPosition(playerData, dx, dy) {
+            // Essayer de bouger sur les deux axes indépendamment
+            const newX = playerData.x + dx;
+            const newY = playerData.y + dy;
+            
+            // Essayer d'abord le mouvement complet
+            if (isValidPosition(newX, newY)) {
+                playerData.x = newX;
+                playerData.y = newY;
+                return;
+            }
+            
+            // Si le mouvement complet échoue, essayer juste horizontalement
+            if (dx !== 0 && isValidPosition(newX, playerData.y)) {
+                playerData.x = newX;
+            }
+            
+            // Puis essayer juste verticalement
+            if (dy !== 0 && isValidPosition(playerData.x, newY)) {
+                playerData.y = newY;
+            }
+        }
+
+        // Vérifier fin de partie
+        function checkGameOver() {
+            if (!gameState.gameStarted) return false;
+            
+            // En mode IA
+            if (aiMode) {
+                const player = gameState.players['player1'];
+                const ai = gameState.players[aiPlayerId];
+                
+                // Si le joueur est mort
+                if (player && !player.alive) {
+                    if (aiMoveInterval) clearInterval(aiMoveInterval);
+                    gameInfo.textContent = `Game Over - Le pirate a gagné !`;
+                    document.getElementById('gameControls').style.display = 'block';
+                    return true;
+                }
+                
+                // Si l'IA est morte
+                if (ai && !ai.alive) {
+                    if (aiMoveInterval) clearInterval(aiMoveInterval);
+                    gameInfo.textContent = `Victoire - Vous avez battu le pirate !`;
+                    document.getElementById('gameControls').style.display = 'block';
+                    return true;
+                }
+            } 
+            // En mode multijoueur
+            else {
+                const player1 = gameState.players['player1'];
+                const player2 = gameState.players['player2'];
+                
+                // Si les deux joueurs sont présents et que l'un est mort
+                if (player1 && player2) {
+                    if (!player1.alive) {
+                        gameInfo.textContent = gameState.playerId === 'player1' ? 
+                            `Game Over - Le Surfeur Bleu a gagné !` : 
+                            `Victoire - Vous avez gagné !`;
+                        document.getElementById('gameControls').style.display = 'block';
+                        return true;
+                    }
+                    
+                    if (!player2.alive) {
+                        gameInfo.textContent = gameState.playerId === 'player2' ? 
+                            `Game Over - Le Rasta Rouge a gagné !` : 
+                            `Victoire - Vous avez gagné !`;
+                        document.getElementById('gameControls').style.display = 'block';
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        // Mettre à jour l'état du jeu
+        function update() {
+            if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+            
+            // Vérifier si le jeu est terminé
+            if (checkGameOver()) return;
+            
+            const player = gameState.players[gameState.playerId];
+            if (!player || !player.alive) return;
+            
+            let playerMoved = false;
+            
+            // Mouvement selon le joueur
+            if (gameState.playerId === 'player1') {
+                // Joueur 1 (ZQSD)
+                if (gameState.keys['z']) {
+                    updatePlayerPosition(player, 0, -PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['s']) {
+                    updatePlayerPosition(player, 0, PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['q']) {
+                    updatePlayerPosition(player, -PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+                if (gameState.keys['d']) {
+                    updatePlayerPosition(player, PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+            } else {
+                // Joueur 2 (Flèches)
+                if (gameState.keys['ArrowUp']) {
+                    updatePlayerPosition(player, 0, -PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['ArrowDown']) {
+                    updatePlayerPosition(player, 0, PLAYER_SPEED);
+                    playerMoved = true;
+                }
+                if (gameState.keys['ArrowLeft']) {
+                    updatePlayerPosition(player, -PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+                if (gameState.keys['ArrowRight']) {
+                    updatePlayerPosition(player, PLAYER_SPEED, 0);
+                    playerMoved = true;
+                }
+            }
+            
+            // Mettre à jour la position sur Firebase si le joueur a bougé
+            if (playerMoved) {
+                database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
+                    x: player.x,
+                    y: player.y
+                });
+            }
+            
+            // Mettre à jour les explosions
+            updateExplosions();
+        }
+
+        // Dessiner le jeu
+        function render() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Si pas de jeu en cours, afficher un écran d'attente
+            if (!gameState.map || gameState.map.length === 0) {
+                ctx.fillStyle = '#006699';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '16px "Comic Sans MS"';
+                ctx.textAlign = 'center';
+                ctx.fillText('En attente de la création/connexion à une partie...', canvas.width/2, canvas.height/2);
+                return;
+            }
+            
+            // Dessiner la carte
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const tileType = gameState.map[y][x];
+                    const tileX = x * TILE_SIZE;
+                    const tileY = y * TILE_SIZE;
+                    
+                    // Couleur selon le type de case
+                    if (tileType === TILE_TYPES.WALL) {
+                        // Mur solide (style palmier)
+                        ctx.fillStyle = '#006633';
+                    } else if (tileType === TILE_TYPES.BRICK) {
+                        // Briques destructibles (tonneaux)
+                        ctx.fillStyle = '#993300';
+                    } else {
+                        // Cases vides (sable)
+                        ctx.fillStyle = '#f9e8b0';
+                    }
+                    
+                    // Dessiner la case
+                    ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                    
+                    // Ajouter une bordure
+                    ctx.strokeStyle = '#111';
+                    ctx.strokeRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                    
+                    // Ajouter des détails selon le type
+                    if (tileType === TILE_TYPES.WALL) {
+                        // Dessiner un petit palmier
+                        ctx.fillStyle = '#004d00';
+                        ctx.fillRect(tileX + 5, tileY + 15, 8, 12);
+                        ctx.beginPath();
+                        ctx.moveTo(tileX + 9, tileY + 15);
+                        ctx.lineTo(tileX + 3, tileY + 5);
+                        ctx.lineTo(tileX + 15, tileY + 8);
+                        ctx.lineTo(tileX + 9, tileY + 15);
+                        ctx.fill();
+                    } else if (tileType === TILE_TYPES.BRICK) {
+                        // Dessiner les lignes du tonneau
+                        ctx.strokeStyle = '#cc6600';
+                        ctx.beginPath();
+                        ctx.moveTo(tileX, tileY + 10);
+                        ctx.lineTo(tileX + TILE_SIZE, tileY + 10);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(tileX, tileY + 20);
+                        ctx.lineTo(tileX + TILE_SIZE, tileY + 20);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // Dessiner les explosions
+            renderExplosions();
+            
+            // Dessiner les bombes
+            renderBombs();
+            
+            // Dessiner les joueurs
+            for (const playerId in gameState.players) {
+                const playerData = gameState.players[playerId];
+                if (playerData && playerData.alive) {
+                    // Fond du joueur
+                    ctx.fillStyle = playerData.color;
+                    ctx.beginPath();
+                    ctx.arc(playerData.x, playerData.y, playerData.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Visage du personnage
+                    ctx.fillStyle = 'white';
+                    // Yeux
+                    ctx.beginPath();
+                    ctx.arc(playerData.x - 5, playerData.y - 3, 3, 0, Math.PI * 2);
+                    ctx.arc(playerData.x + 5, playerData.y - 3, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Pupilles
+                    ctx.fillStyle = 'black';
+                    ctx.beginPath();
+                    ctx.arc(playerData.x - 5, playerData.y - 3, 1.5, 0, Math.PI * 2);
+                    ctx.arc(playerData.x + 5, playerData.y - 3, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Sourire
+                    ctx.beginPath();
+                    ctx.arc(playerData.x, playerData.y + 2, 5, 0, Math.PI);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Démarrer l'IA
+        function startAI() {
+            if (aiMoveInterval) clearInterval(aiMoveInterval);
+            
+            aiMoveInterval = setInterval(() => {
+                if (!gameState.gameStarted || !aiMode) return;
+                
+                const aiPlayer = gameState.players[aiPlayerId];
+                if (!aiPlayer || !aiPlayer.alive) {
+                    clearInterval(aiMoveInterval);
+                    return;
+                }
+                
+                // Logique de mouvement de l'IA
+                moveAI(aiPlayer);
+                
+                // Possibilité de placer une bombe (aléatoirement)
+                if (Math.random() < 0.1) { // 10% de chance à chaque mise à jour
+                    placeAIBomb(aiPlayer);
+                }
+            }, AI_MOVE_DELAY);
+        }
+
+        // Déplacer l'IA - version améliorée
+        function moveAI(aiPlayer) {
+            // Obtenir la position actuelle de l'IA sur la grille
+            const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+            const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+            
+            // S'assurer que l'IA est bien centrée sur sa case actuelle
+            const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
+            const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
+            
+            // Si l'IA n'est pas bien centrée, la recentrer d'abord
+            if (Math.abs(aiPlayer.x - centerX) > 2 || Math.abs(aiPlayer.y - centerY) > 2) {
+                const dx = Math.sign(centerX - aiPlayer.x) * Math.min(PLAYER_SPEED, Math.abs(centerX - aiPlayer.x));
+                const dy = Math.sign(centerY - aiPlayer.y) * Math.min(PLAYER_SPEED, Math.abs(centerY - aiPlayer.y));
+                
+                if (dx !== 0) aiPlayer.x += dx;
+                if (dy !== 0) aiPlayer.y += dy;
+                
+                // Synchroniser avec Firebase
+                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+                    x: aiPlayer.x,
+                    y: aiPlayer.y
+                });
+                
+                return; // Ne pas faire d'autre mouvement pour ce tour
+            }
+            
+            // Directions possibles: haut, bas, gauche, droite
+            const directions = [
+                { dx: 0, dy: -PLAYER_SPEED, name: 'haut' },
+                { dx: 0, dy: PLAYER_SPEED, name: 'bas' },
+                { dx: -PLAYER_SPEED, dy: 0, name: 'gauche' },
+                { dx: PLAYER_SPEED, dy: 0, name: 'droite' }
+            ];
+            
+            // Filtrer les directions valides (sans obstacle)
+            const validDirections = directions.filter(dir => {
+                // Vérifier la position après le mouvement complet
+                const newGridX = Math.floor((aiPlayer.x + dir.dx * 4) / TILE_SIZE);
+                const newGridY = Math.floor((aiPlayer.y + dir.dy * 4) / TILE_SIZE);
+                
+                if (newGridX !== gridX || newGridY !== gridY) {
+                    // On vérifie si la nouvelle case est accessible
+                    return newGridX >= 0 && newGridX < GRID_SIZE && 
+                           newGridY >= 0 && newGridY < GRID_SIZE && 
+                           gameState.map[newGridY][newGridX] === TILE_TYPES.EMPTY;
+                }
+                
+                // Si on reste sur la même case, c'est valide
+                return true;
+            });
+            
+            // Si aucune direction valide, rester immobile
+            if (validDirections.length === 0) {
+                // Si l'IA est bloquée, essayer de poser une bombe pour se frayer un chemin
+                if (Math.random() < 0.5) {
+                    placeAIBomb(aiPlayer);
+                }
+                return;
+            }
+            
+            // Vérifier s'il y a des bombes à proximité
+            const nearbyBomb = gameState.bombs.some(bomb => {
+                const bombDistance = Math.sqrt(
+                    Math.pow((bomb.x * TILE_SIZE + TILE_SIZE / 2 - aiPlayer.x) / TILE_SIZE, 2) + 
+                    Math.pow((bomb.y * TILE_SIZE + TILE_SIZE / 2 - aiPlayer.y) / TILE_SIZE, 2)
+                );
+                return bombDistance < 2;
+            });
+            
+            let chosenDirection;
+            
+            // Si une bombe est à proximité, fuir
+            if (nearbyBomb) {
+                // Trier les directions valides par distance aux bombes
+                const safeDirections = validDirections.map(dir => {
+                    const newPos = {
+                        x: aiPlayer.x + dir.dx * 3,
+                        y: aiPlayer.y + dir.dy * 3
+                    };
+                    
+                    // Calculer la distance minimale à toutes les bombes depuis cette nouvelle position
+                    let minBombDistance = Infinity;
+                    gameState.bombs.forEach(bomb => {
+                        const bombPos = {
+                            x: bomb.x * TILE_SIZE + TILE_SIZE / 2,
+                            y: bomb.y * TILE_SIZE + TILE_SIZE / 2
+                        };
+                        const distance = Math.sqrt(
+                            Math.pow((bombPos.x - newPos.x) / TILE_SIZE, 2) + 
+                            Math.pow((bombPos.y - newPos.y) / TILE_SIZE, 2)
+                        );
+                        minBombDistance = Math.min(minBombDistance, distance);
+                    });
+                    
+                    return {
+                        direction: dir,
+                        safety: minBombDistance
+                    };
+                }).sort((a, b) => b.safety - a.safety);
+                
+                // Prendre la direction la plus sûre
+                chosenDirection = safeDirections.length > 0 ? safeDirections[0].direction : validDirections[0];
+            } else {
+                // Comportement normal: se diriger vers le joueur humain
+                const player = gameState.players['player1'];
+                
+                if (player && player.alive) {
+                    // Intelligence simple: chercher à s'approcher du joueur humain
+                    const distanceToPlayer = Math.sqrt(
+                        Math.pow((player.x - aiPlayer.x) / TILE_SIZE, 2) + 
+                        Math.pow((player.y - aiPlayer.y) / TILE_SIZE, 2)
+                    );
+                    
+                    if (distanceToPlayer < 3 && Math.random() < 0.7) {
+                        // Échapper au joueur (aller dans la direction opposée)
+                        const playerDirX = player.x > aiPlayer.x ? 1 : -1;
+                        const playerDirY = player.y > aiPlayer.y ? 1 : -1;
+                        
+                        // Chercher une direction qui s'éloigne du joueur
+                        const escapeDirs = validDirections.filter(dir => {
+                            return (dir.dx * playerDirX <= 0) || (dir.dy * playerDirY <= 0);
+                        });
+                        
+                        chosenDirection = escapeDirs.length > 0 
+                            ? escapeDirs[Math.floor(Math.random() * escapeDirs.length)]
+                            : validDirections[Math.floor(Math.random() * validDirections.length)];
+                            
+                        // Forte chance de poser une bombe
+                        if (Math.random() < 0.3) {
+                            placeAIBomb(aiPlayer);
+                        }
+                    } else {
+                        // Se déplacer vers le joueur
+                        validDirections.sort((a, b) => {
+                            const distA = Math.abs((aiPlayer.x + a.dx * 4 - player.x) / TILE_SIZE) + 
+                                         Math.abs((aiPlayer.y + a.dy * 4 - player.y) / TILE_SIZE);
+                            const distB = Math.abs((aiPlayer.x + b.dx * 4 - player.x) / TILE_SIZE) + 
+                                         Math.abs((aiPlayer.y + b.dy * 4 - player.y) / TILE_SIZE);
+                            return distA - distB;
+                        });
+                        
+                        // Ajouter du hasard pour que l'IA ne soit pas trop prévisible
+                        chosenDirection = Math.random() < 0.7 
+                            ? validDirections[0] // 70% de chance de prendre la meilleure direction
+                            : validDirections[Math.floor(Math.random() * validDirections.length)];
+                    }
+                } else {
+                    // Si pas de joueur, déplacement aléatoire
+                    chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+                }
+            }
+            
+            // Appliquer le mouvement
+            const newX = aiPlayer.x + chosenDirection.dx;
+            const newY = aiPlayer.y + chosenDirection.dy;
+            
+            // Vérifier une dernière fois si la position est valide
+            if (isValidPosition(newX, newY)) {
+                // Mettre à jour la position de l'IA
+                aiPlayer.x = newX;
+                aiPlayer.y = newY;
+                
+                // Synchroniser avec Firebase
+                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+                    x: aiPlayer.x,
+                    y: aiPlayer.y
+                });
+            }
+        }
+
+        // L'IA place une bombe
+        function placeAIBomb(aiPlayer) {
+            // Obtenir la position de la grille
+            const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+            const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+            
+            // Vérifier si une bombe est déjà présente à cet endroit
+            const bombsAtPosition = gameState.bombs.filter(bomb => 
+                bomb.x === gridX && bomb.y === gridY
+            );
+            
+            // Compte le nombre de bombes actives de l'IA
+            const activeBombs = gameState.bombs.filter(bomb => 
+                bomb.playerId === aiPlayerId
+            );
+            
+            // Placer la bombe si possible
+            if (bombsAtPosition.length === 0 && activeBombs.length < aiPlayer.maxBombs) {
+                const newBomb = {
+                    id: generateId(),
+                    playerId: aiPlayerId,
+                    x: gridX,
+                    y: gridY,
+                    range: aiPlayer.bombRange,
+                    timer: Date.now() + BOMB_TIMER
+                };
+                
+                // Vérifier si placer une bombe est sécuritaire
+                // (l'IA a au moins une direction pour s'échapper)
+                const directions = [
+                    { dx: 0, dy: -1 }, // haut
+                    { dx: 0, dy: 1 },  // bas
+                    { dx: -1, dy: 0 }, // gauche
+                    { dx: 1, dy: 0 }   // droite
+                ];
+                
+                let hasEscape = false;
+                for (const dir of directions) {
+                    const newX = (gridX + dir.dx);
+                    const newY = (gridY + dir.dy);
+                    
+                    if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE &&
+                        gameState.map[newY][newX] === TILE_TYPES.EMPTY) {
+                        hasEscape = true;
+                        break;
+                    }
+                }
+                
+                // Seulement placer la bombe si l'IA peut s'échapper
+                if (hasEscape) {
+                    // Ajouter la bombe au jeu
+                    database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+                }
+            }
+        }
+
+        // Placer une bombe
+        function placeBomb() {
+            if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+            
+            const player = gameState.players[gameState.playerId];
+            if (!player || !player.alive) return;
+            
+            // Obtenir la position de la grille
+            const gridX = Math.floor(player.x / TILE_SIZE);
+            const gridY = Math.floor(player.y / TILE_SIZE);
+            
+            // Vérifier si une bombe est déjà présente à cet endroit
+            const bombsAtPosition = gameState.bombs.filter(bomb => 
+                bomb.x === gridX && bomb.y === gridY
+            );
+            
+            // Compte le nombre de bombes actives de ce joueur
+            const activeBombs = gameState.bombs.filter(bomb => 
+                bomb.playerId === gameState.playerId
+            );
+            
+            // Placer la bombe si possible
+            if (bombsAtPosition.length === 0 && activeBombs.length < player.maxBombs) {
+                const newBomb = {
+                    id: generateId(),
+                    playerId: gameState.playerId,
+                    x: gridX,
+                    y: gridY,
+                    range: player.bombRange,
+                    timer: Date.now() + BOMB_TIMER // Timestamp pour l'explosion
+                };
+                
+                // Ajouter la bombe au jeu
+                database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+            }
+        }
+
+        // Déclencher l'explosion d'une bombe
+        function explodeBomb(bomb) {
+            if (!gameState.map || !bomb) return;
+            
+            const explosionCells = [];
+            const { x, y, range } = bomb;
+            
+            // Ajouter la cellule centrale
+            explosionCells.push({ x, y });
+            
+            // Explorer les 4 directions (haut, droite, bas, gauche)
+            const directions = [
+                { dx: 0, dy: -1 }, // haut
+                { dx: 1, dy: 0 },  // droite
+                { dx: 0, dy: 1 },  // bas
+                { dx: -1, dy: 0 }  // gauche
+            ];
+            
+            // Pour chaque direction, étendre jusqu'à rencontrer un obstacle ou atteindre la portée
+            directions.forEach(dir => {
+                for (let i = 1; i <= range; i++) {
+                    const newX = x + dir.dx * i;
+                    const newY = y + dir.dy * i;
+                    
+                    // Vérifier si on est toujours dans les limites de la carte
+                    if (newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE) {
+                        break;
+                    }
+                    
+                    // Si on rencontre un mur, arrêter dans cette direction
+                    if (gameState.map[newY][newX] === TILE_TYPES.WALL) {
+                        break;
+                    }
+                    
+                    // Ajouter cette cellule à l'explosion
+                    explosionCells.push({ x: newX, y: newY });
+                    
+                    // Si on rencontre une brique, la détruire et arrêter dans cette direction
+                    if (gameState.map[newY][newX] === TILE_TYPES.BRICK) {
+                        // Mettre à jour la carte dans Firebase
+                        database.ref(`games/${gameState.roomId}/map/${newY}/${newX}`).set(TILE_TYPES.EMPTY);
+                        break;
+                    }
+                }
+            });
+            
+            // Créer l'explosion dans Firebase
+            const explosion = {
+                cells: explosionCells,
+                timestamp: Date.now(),
+                duration: EXPLOSION_DURATION
+            };
+            
+            // Ajouter l'explosion à Firebase
+            database.ref(`games/${gameState.roomId}/explosions`).push(explosion);
+            
+            // Supprimer la bombe de Firebase
+            database.ref(`games/${gameState.roomId}/bombs`).remove();
+            
+            // Vérifier si des joueurs sont touchés par l'explosion
+            checkPlayersInExplosion(explosionCells);
+            
+            // Vérifier si d'autres bombes sont touchées par l'explosion (réaction en chaîne)
+            checkBombsInExplosion(explosionCells, bomb.id);
+        }
+
+        // Vérifier si des joueurs sont touchés par l'explosion
+        function checkPlayersInExplosion(explosionCells) {
+            for (const playerId in gameState.players) {
+                const player = gameState.players[playerId];
+                if (!player || !player.alive) continue;
+                
+                // Obtenir la position du joueur sur la grille
+                const playerGridX = Math.floor(player.x / TILE_SIZE);
+                const playerGridY = Math.floor(player.y / TILE_SIZE);
+                
+                // Vérifier si le joueur est dans une cellule touchée par l'explosion
+                const isHit = explosionCells.some(cell => cell.x === playerGridX && cell.y === playerGridY);
+                
+                if (isHit) {
+                    // Marquer le joueur comme mort
+                    database.ref(`games/${gameState.roomId}/players/${playerId}/alive`).set(false);
+                }
+            }
+        }
+
+        // Vérifier si d'autres bombes sont touchées par l'explosion
+        function checkBombsInExplosion(explosionCells, excludeBombId) {
+            for (const bomb of gameState.bombs) {
+                if (bomb.id === excludeBombId) continue;
+                
+                // Vérifier si la bombe est dans une cellule touchée par l'explosion
+                const isHit = explosionCells.some(cell => cell.x === bomb.x && cell.y === bomb.y);
+                
+                if (isHit) {
+                    // Exploser cette bombe immédiatement (réaction en chaîne)
+                    explodeBomb(bomb);
+                }
+            }
+        }
+
+        // Mettre à jour les explosions
+        function updateExplosions() {
+            const currentTime = Date.now();
+            
+            // Vérifier si des bombes doivent exploser
+            for (const bomb of gameState.bombs) {
+                if (bomb.timer && bomb.timer <= currentTime) {
+                    explodeBomb(bomb);
+                }
+            }
+            
+            // Supprimer les explosions terminées
+            for (const explosion of gameState.explosions) {
+                if (explosion.timestamp + explosion.duration <= currentTime) {
+                    database.ref(`games/${gameState.roomId}/explosions/${explosion.id}`).remove();
+                }
+            }
+        }
+
+        // Dessiner les bombes
+        function renderBombs() {
+            if (!gameState.bombs) return;
+            
+            for (const bomb of gameState.bombs) {
+                // Calculer l'animation de la bombe (pulsation)
+                const timeLeft = bomb.timer - Date.now();
+                const scale = 1 + 0.2 * Math.sin(timeLeft / 200);
+                
+                // Dessiner une noix de coco comme bombe
+                ctx.fillStyle = '#654321'; // Marron pour la noix de coco
+                ctx.beginPath();
+                ctx.arc(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2, 
+                    TILE_SIZE/3 * scale, 
+                    0, 
+                    Math.PI * 2
+                );
+                ctx.fill();
+                
+                // Ajouter des détails à la noix de coco
+                ctx.fillStyle = '#543210';
+                ctx.beginPath();
+                ctx.arc(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2 - 3, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2 - 3, 
+                    2, 
+                    0, 
+                    Math.PI * 2
+                );
+                ctx.arc(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2 + 3, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2 - 3, 
+                    2, 
+                    0, 
+                    Math.PI * 2
+                );
+                ctx.arc(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2 + 3, 
+                    2, 
+                    0, 
+                    Math.PI * 2
+                );
+                ctx.fill();
+                
+                // Ajouter une petite feuille comme mèche
+                ctx.fillStyle = '#00AA00';
+                ctx.beginPath();
+                ctx.moveTo(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/3
+                );
+                ctx.lineTo(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2 + 5, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/2
+                );
+                ctx.lineTo(
+                    bomb.x * TILE_SIZE + TILE_SIZE/2 - 5, 
+                    bomb.y * TILE_SIZE + TILE_SIZE/2 - TILE_SIZE/2 - 2
+                );
+                ctx.fill();
+            }
+        }
+
+        // Dessiner les explosions
+        function renderExplosions() {
+            if (!gameState.explosions) return;
+            
+            const currentTime = Date.now();
+            
+            for (const explosion of gameState.explosions) {
+                // Calculer l'opacité en fonction du temps écoulé
+                const timeElapsed = currentTime - explosion.timestamp;
+                const opacity = 1 - (timeElapsed / explosion.duration);
+                
+                if (opacity <= 0) continue;
+                
+                // Dessiner chaque cellule de l'explosion
+                for (const cell of explosion.cells) {
+                    // Utiliser un dégradé pour l'effet d'explosion tropicale
+                    const gradient = ctx.createRadialGradient(
+                        cell.x * TILE_SIZE + TILE_SIZE/2,
+                        cell.y * TILE_SIZE + TILE_SIZE/2,
+                        0,
+                        cell.x * TILE_SIZE + TILE_SIZE/2,
+                        cell.y * TILE_SIZE + TILE_SIZE/2,
+                        TILE_SIZE/2
+                    );
+                    
+                    // Couleurs chaudes pour une explosion tropicale - jaune, orange, rouge
+                    gradient.addColorStop(0, `rgba(255, 255, 0, ${opacity})`);
+                    gradient.addColorStop(0.6, `rgba(255, 165, 0, ${opacity * 0.9})`);
+                    gradient.addColorStop(1, `rgba(255, 69, 0, ${opacity * 0.7})`);
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(
+                        cell.x * TILE_SIZE, 
+                        cell.y * TILE_SIZE, 
+                        TILE_SIZE, 
+                        TILE_SIZE
+                    );
+                    
+                    // Ajouter des particules façon "confettis" pour effet reggae
+                    if (Math.random() < 0.4) {
+                        const particleColors = ['#00FF00', '#FFFF00', '#FF0000']; // Vert, jaune, rouge (couleurs reggae)
+                        const color = particleColors[Math.floor(Math.random() * particleColors.length)];
+                        
+                        ctx.fillStyle = color;
+                        ctx.fillRect(
+                            cell.x * TILE_SIZE + Math.random() * TILE_SIZE, 
+                            cell.y * TILE_SIZE + Math.random() * TILE_SIZE, 
+                            3, 
+                            3
+                        );
+                    }
+                }
+            }
+        }
+// Créer une nouvelle partie multijoueur
+function createGame() {
+            // Générer un code de salle si non spécifié
+            const roomId = roomInput.value || generateId();
+            roomInput.value = roomId;
+            gameState.roomId = roomId;
+            gameState.playerId = 'player1';
+            aiMode = false;
+            
+            // Créer la partie dans Firebase
+            const gameRef = database.ref(`games/${roomId}`);
+            gameRef.set({
+                map: generateMap(),
+                players: {
+                    player1: createPlayer(0, 0, '#ff6b6b')
+                },
+                bombs: {},
+                explosions: {},
+                gameStarted: false
+            });
+            
+            // Rejoindre la partie
+            joinGame(roomId, 'player1');
+            gameInfo.textContent = `Partie créée ! Code: ${roomId} - En attente d'un autre joueur...`;
+        }
+
+        // Rejoindre une partie existante
+        function joinExistingGame() {
+            const roomId = roomInput.value;
+            if (!roomId) {
+                alert('Veuillez entrer un code de partie');
+                return;
+            }
+            
+            // Vérifier si la partie existe
+            const gameRef = database.ref(`games/${roomId}`);
+            gameRef.once('value', (snapshot) => {
+                const gameData = snapshot.val();
+                if (!gameData) {
+                    alert('Partie non trouvée');
+                    return;
+                }
+                
+                // Vérifier si la partie est complète
+                if (gameData.players && gameData.players.player2) {
+                    alert('Partie déjà complète');
+                    return;
+                }
+                
+                // Rejoindre en tant que joueur 2
+                gameState.roomId = roomId;
+                gameState.playerId = 'player2';
+                aiMode = false;
+                
+                // Ajouter le joueur 2 à la partie
+                gameRef.child('players/player2').set(createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4'));
+                gameRef.child('gameStarted').set(true);
+                
+                // Rejoindre la partie
+                joinGame(roomId, 'player2');
+            });
+        }
+
+        // Créer une partie solo contre l'IA
+        function createSinglePlayerGame() {
+            // Générer un code de salle pour le mode solo
+            const roomId = 'solo_' + generateId();
+            roomInput.value = roomId;
+            gameState.roomId = roomId;
+            gameState.playerId = 'player1';
+            aiMode = true;
+            
+            // Créer la partie dans Firebase avec le joueur humain et l'IA
+            const gameRef = database.ref(`games/${roomId}`);
+            gameRef.set({
+                map: generateMap(),
+                players: {
+                    player1: createPlayer(0, 0, '#ff6b6b'),
+                    [aiPlayerId]: createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4')
+                },
+                bombs: {},
+                explosions: {},
+                gameStarted: true
+            });
+            
+            // Rejoindre la partie
+            joinGame(roomId, 'player1');
+            gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
+            
+            // Démarrer l'IA
+            startAI();
+        }
+
+        // Rejoindre une partie et configurer les écouteurs
+        function joinGame(roomId, playerId) {
+            const gameRef = database.ref(`games/${roomId}`);
+            
+            // Écouter les changements d'état du jeu
+            gameRef.on('value', (snapshot) => {
+                const gameData = snapshot.val();
+                if (!gameData) return;
+                
+                // Mettre à jour l'état du jeu local
+                gameState.map = gameData.map;
+                gameState.players = gameData.players || {};
+                
+                // Convertir les objets bombs et explosions en tableaux
+                gameState.bombs = gameData.bombs ? Object.values(gameData.bombs) : [];
+                gameState.explosions = gameData.explosions ? Object.values(gameData.explosions) : [];
+                
+                gameState.gameStarted = gameData.gameStarted;
+                
+                // Afficher un message quand le jeu commence
+                if (gameState.gameStarted) {
+                    if (aiMode) {
+                        gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
+                    } else if (gameData.players.player1 && gameData.players.player2) {
+                        gameInfo.textContent = `Combat sur l'île - Vous êtes le ${playerId === 'player1' ? 'Rasta Rouge' : 'Surfeur Bleu'}`;
+                    }
+                }
+            });
+            
+            // Configurer les déconnexions
+            gameRef.child(`players/${playerId}`).onDisconnect().remove();
+            database.ref(`.info/connected`).on('value', (snapshot) => {
+                if (snapshot.val() === false) return;
+                
+                // Nettoyer la partie si tous les joueurs sont déconnectés
+                gameRef.onDisconnect().remove();
+            });
+            
+            // Cacher les contrôles de salle et cacher les contrôles de jeu jusqu'à la fin
+            document.getElementById('roomControls').style.display = 'none';
+            document.getElementById('gameControls').style.display = 'none';
+        }
+
+        // Fonction pour redémarrer la partie
+        function restartGame() {
+            // Si on est en mode solo avec IA
+            if (aiMode) {
+                // Nettoyer l'intervalle de l'IA pour éviter les doublons
+                if (aiMoveInterval) {
+                    clearInterval(aiMoveInterval);
+                }
+                
+                // Régénérer une carte et réinitialiser les joueurs
+                const roomId = 'solo_' + generateId();
+                gameState.roomId = roomId;
+                
+                // Créer une nouvelle partie
+                const gameRef = database.ref(`games/${roomId}`);
+                gameRef.set({
+                    map: generateMap(),
+                    players: {
+                        player1: createPlayer(0, 0, '#ff6b6b'),
+                        [aiPlayerId]: createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4')
+                    },
+                    bombs: {},
+                    explosions: {},
+                    gameStarted: true
+                });
+                
+                // Rejoindre la partie
+                joinGame(roomId, 'player1');
+                gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
+                
+                // Démarrer l'IA
+                startAI();
+                
+                // Cacher les contrôles de jeu jusqu'à la fin de partie
+                document.getElementById('gameControls').style.display = 'none';
+            } else {
+                // Pour les parties multijoueur, revenir à l'écran de création de partie
+                document.getElementById('roomControls').style.display = 'block';
+                document.getElementById('gameControls').style.display = 'none';
+                
+                // Déconnecter la partie actuelle
+                if (gameState.roomId) {
+                    database.ref(`games/${gameState.roomId}`).off();
+                }
+                
+                // Réinitialiser l'état
+                gameState.roomId = null;
+                gameState.playerId = null;
+                gameState.map = [];
+                gameState.players = {};
+                gameState.bombs = [];
+                gameState.explosions = [];
+                gameState.gameStarted = false;
+            }
+        }
+
+        // Fonction pour revenir au menu principal
+        function returnToHome() {
+            // Rediriger vers la page d'accueil
+            window.location.href = 'index.html';
+        }
+
+        // Gérer les entrées clavier
+        window.addEventListener('keydown', (e) => {
+            gameState.keys[e.key] = true;
+            
+            // Touche espace pour poser une bombe
+            if (e.key === ' ' && gameState.gameStarted) {
+                placeBomb();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            gameState.keys[e.key] = false;
+        });
+
+        // Nettoyage lors de la fermeture de la page
+        window.addEventListener('beforeunload', () => {
+            if (aiMoveInterval) {
+                clearInterval(aiMoveInterval);
+            }
+        });
+
+        // Ajout des écouteurs d'événements pour les boutons
+        document.getElementById('createBtn').addEventListener('click', createGame);
+        document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
+        document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
+        document.getElementById('restartBtn').addEventListener('click', restartGame);
+        document.getElementById('homeBtn').addEventListener('click', returnToHome);
+
+        // Boucle de jeu principale
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Démarrer le jeu
+        gameLoop();
+    </script>
 </body>
 </html>

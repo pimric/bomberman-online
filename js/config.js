@@ -5,9 +5,9 @@ const PLAYER_SPEED = 3;
 
 // Définir les types de cases
 const TILE_TYPES = {
-    EMPTY: 0,
-    WALL: 1,
-    BRICK: 2
+    EMPTY: 0,  // Sable
+    WALL: 1,   // Palmiers
+    BRICK: 2   // Tonneaux
 };
 
 // Configuration des bombes

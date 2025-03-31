@@ -144,31 +144,68 @@ function updatePlayerPosition(playerData, dx, dy) {
     }
 }
 
+// Vérifier fin de partie
+function checkGameOver() {
+    if (!gameState.gameStarted) return false;
+    
+    // En mode IA
+    if (aiMode) {
+        const player = gameState.players['player1'];
+        const ai = gameState.players[aiPlayerId];
+        
+        // Si le joueur est mort
+        if (player && !player.alive) {
+            if (aiMoveInterval) clearInterval(aiMoveInterval);
+            gameInfo.textContent = `Game Over - Vous avez perdu !`;
+            document.getElementById('gameControls').style.display = 'block';
+            return true;
+        }
+        
+        // Si l'IA est morte
+        if (ai && !ai.alive) {
+            if (aiMoveInterval) clearInterval(aiMoveInterval);
+            gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
+            document.getElementById('gameControls').style.display = 'block';
+            return true;
+        }
+    } 
+    // En mode multijoueur
+    else {
+        const player1 = gameState.players['player1'];
+        const player2 = gameState.players['player2'];
+        
+        // Si les deux joueurs sont présents et que l'un est mort
+        if (player1 && player2) {
+            if (!player1.alive) {
+                gameInfo.textContent = gameState.playerId === 'player1' ? 
+                    `Game Over - Vous avez perdu !` : 
+                    `Victoire - Vous avez gagné !`;
+                document.getElementById('gameControls').style.display = 'block';
+                return true;
+            }
+            
+            if (!player2.alive) {
+                gameInfo.textContent = gameState.playerId === 'player2' ? 
+                    `Game Over - Vous avez perdu !` : 
+                    `Victoire - Vous avez gagné !`;
+                document.getElementById('gameControls').style.display = 'block';
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
 // Mettre à jour l'état du jeu
 function update() {
     if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
     
-    const player = gameState.players[gameState.playerId];
-    if (!player || !player.alive) {
-        // Si le joueur est mort et qu'on est en mode IA, afficher le message approprié
-        if (aiMode && aiMoveInterval) {
-            clearInterval(aiMoveInterval);
-            gameInfo.textContent = `Game Over - Vous avez perdu !`;
-            // Assurer que les boutons de contrôle sont visibles
-            document.getElementById('gameControls').style.display = 'block';
-        }
-        return;
-    }
+    // Vérifier si le jeu est terminé
+    if (checkGameOver()) return;
     
-    // Vérifier si l'IA est morte (en mode IA)
-    if (aiMode && gameState.players[aiPlayerId] && !gameState.players[aiPlayerId].alive) {
-        if (aiMoveInterval) {
-            clearInterval(aiMoveInterval);
-            gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
-            // Assurer que les boutons de contrôle sont visibles
-            document.getElementById('gameControls').style.display = 'block';
-        }
-    }
+    const player = gameState.players[gameState.playerId];
+    if (!player || !player.alive) return;
     
     let playerMoved = false;
     
@@ -230,10 +267,10 @@ function render() {
     
     // Si pas de jeu en cours, afficher un écran d'attente
     if (!gameState.map || gameState.map.length === 0) {
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#006699';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = 'white';
-        ctx.font = '16px "Courier New"';
+        ctx.font = '16px "Comic Sans MS"';
         ctx.textAlign = 'center';
         ctx.fillText('En attente de la création/connexion à une partie...', canvas.width/2, canvas.height/2);
         return;
@@ -248,11 +285,14 @@ function render() {
             
             // Couleur selon le type de case
             if (tileType === TILE_TYPES.WALL) {
-                ctx.fillStyle = '#333';
+                // Mur solide (style palmier/rocher)
+                ctx.fillStyle = '#006633';
             } else if (tileType === TILE_TYPES.BRICK) {
-                ctx.fillStyle = '#8B4513';
+                // Briques destructibles (tonneaux/caisses)
+                ctx.fillStyle = '#993300';
             } else {
-                ctx.fillStyle = '#222';
+                // Cases vides (sable)
+                ctx.fillStyle = '#f9e8b0';
             }
             
             // Dessiner la case
@@ -261,6 +301,30 @@ function render() {
             // Ajouter une bordure
             ctx.strokeStyle = '#111';
             ctx.strokeRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+            
+            // Ajouter des détails selon le type
+            if (tileType === TILE_TYPES.WALL) {
+                // Dessiner un petit palmier
+                ctx.fillStyle = '#004d00';
+                ctx.fillRect(tileX + 5, tileY + 15, 8, 12);
+                ctx.beginPath();
+                ctx.moveTo(tileX + 9, tileY + 15);
+                ctx.lineTo(tileX + 3, tileY + 5);
+                ctx.lineTo(tileX + 15, tileY + 8);
+                ctx.lineTo(tileX + 9, tileY + 15);
+                ctx.fill();
+            } else if (tileType === TILE_TYPES.BRICK) {
+                // Dessiner les lignes du tonneau
+                ctx.strokeStyle = '#cc6600';
+                ctx.beginPath();
+                ctx.moveTo(tileX, tileY + 10);
+                ctx.lineTo(tileX + TILE_SIZE, tileY + 10);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(tileX, tileY + 20);
+                ctx.lineTo(tileX + TILE_SIZE, tileY + 20);
+                ctx.stroke();
+            }
         }
     }
     
@@ -274,10 +338,31 @@ function render() {
     for (const playerId in gameState.players) {
         const playerData = gameState.players[playerId];
         if (playerData && playerData.alive) {
+            // Fond du joueur
             ctx.fillStyle = playerData.color;
             ctx.beginPath();
             ctx.arc(playerData.x, playerData.y, playerData.radius, 0, Math.PI * 2);
             ctx.fill();
+            
+            // Visage du personnage
+            ctx.fillStyle = 'white';
+            // Yeux
+            ctx.beginPath();
+            ctx.arc(playerData.x - 5, playerData.y - 3, 3, 0, Math.PI * 2);
+            ctx.arc(playerData.x + 5, playerData.y - 3, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Pupilles
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(playerData.x - 5, playerData.y - 3, 1.5, 0, Math.PI * 2);
+            ctx.arc(playerData.x + 5, playerData.y - 3, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Sourire
+            ctx.beginPath();
+            ctx.arc(playerData.x, playerData.y + 2, 5, 0, Math.PI);
+            ctx.stroke();
         }
     }
 }

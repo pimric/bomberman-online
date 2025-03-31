@@ -1,63 +1,92 @@
 body {
-    background-color: #111;
+    background: linear-gradient(135deg, #0099cc, #006699);
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
     margin: 0;
-    font-family: 'Courier New', monospace;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
     color: white;
+    background-image: url('https://cdnjs.cloudflare.com/ajax/libs/line-awesome/1.3.0/svg/palm-tree.svg');
+    background-repeat: repeat;
+    background-size: 100px;
+    background-blend-mode: soft-light;
 }
 
 #gameContainer {
     text-align: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    border: 3px solid #ffd700;
 }
 
 canvas {
-    border: 4px solid #444;
-    background-color: #000;
+    border: 4px solid #ffd700;
+    background-color: #f9e8b0; /* Sand color */
     image-rendering: pixelated;
+    border-radius: 8px;
 }
 
 h1 {
-    font-size: 24px;
-    color: #ff6b6b;
-    margin-bottom: 10px;
+    font-size: 32px;
+    color: #ffd700; /* Gold color for reggae vibe */
+    margin-bottom: 15px;
     text-transform: uppercase;
     letter-spacing: 2px;
-    text-shadow: 2px 2px 0px #000;
+    text-shadow: 2px 2px 0px #000, 4px 4px 0px #006699;
+    font-weight: bold;
 }
 
 #roomControls {
     margin: 20px 0;
-    padding: 10px;
-    background-color: #222;
-    border-radius: 5px;
+    padding: 15px;
+    background-color: rgba(34, 139, 34, 0.7); /* Forest green with opacity */
+    border-radius: 10px;
+    border: 2px dashed #ffd700;
 }
 
 button {
-    background-color: #ff6b6b;
+    background: linear-gradient(to bottom, #ff9900, #ff6600);
     color: white;
     border: none;
-    padding: 8px 16px;
-    margin: 0 5px;
-    border-radius: 4px;
+    padding: 10px 18px;
+    margin: 0 8px;
+    border-radius: 8px;
     cursor: pointer;
-    font-family: 'Courier New', monospace;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
     font-weight: bold;
+    font-size: 14px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 0 #cc5200;
+    transition: all 0.2s;
 }
 
 button:hover {
-    background-color: #ff8585;
+    background: linear-gradient(to bottom, #ffaa33, #ff7722);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 #cc5200;
+}
+
+button:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #cc5200;
 }
 
 input {
-    background-color: #333;
-    color: white;
-    border: 1px solid #555;
-    padding: 8px;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
+    background-color: #ffe6cc;
+    color: #663300;
+    border: 2px solid #ff9900;
+    padding: 10px;
+    border-radius: 8px;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+    font-size: 14px;
+    width: 150px;
+}
+
+input::placeholder {
+    color: #cc8800;
 }
 
 /* Styles pour les explosions */
@@ -74,23 +103,37 @@ input {
 }
 
 .gameButton {
-    background-color: #ff6b6b;
+    background: linear-gradient(to bottom, #ff9900, #ff6600);
     color: white;
-    padding: 8px 16px;
+    padding: 12px 20px;
     font-size: 16px;
     border: none;
-    border-radius: 5px;
-    margin: 5px;
+    border-radius: 8px;
+    margin: 8px;
     cursor: pointer;
-    font-family: 'Courier New', monospace;
-    box-shadow: 0 3px 0 #d44d4d;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+    box-shadow: 0 4px 0 #cc5200;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
 .gameButton:hover {
-    background-color: #ff8585;
+    background: linear-gradient(to bottom, #ffaa33, #ff7722);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 #cc5200;
 }
 
 .gameButton:active {
     transform: translateY(2px);
-    box-shadow: 0 1px 0 #d44d4d;
+    box-shadow: 0 2px 0 #cc5200;
+}
+
+#gameInfo {
+    background-color: rgba(255, 215, 0, 0.3);
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    font-weight: bold;
+    text-shadow: 1px 1px 0px #000;
+    letter-spacing: 1px;
 }
