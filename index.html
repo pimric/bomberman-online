@@ -3,14 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Boomerman Online - Accueil</title>
+    <title>Island Bomber - Accueil</title>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
     <style>
         body {
-            background-color: #111;
-            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0099cc, #006699);
+            font-family: 'Comic Sans MS', cursive, sans-serif;
             color: white;
             margin: 0;
             padding: 0;
+            background-image: url('https://cdnjs.cloudflare.com/ajax/libs/line-awesome/1.3.0/svg/palm-tree.svg');
+            background-repeat: repeat;
+            background-size: 100px;
+            background-blend-mode: soft-light;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
         
         .container {
@@ -18,68 +27,83 @@
             margin: 0 auto;
             padding: 20px;
             text-align: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border: 3px solid #ffd700;
         }
         
         .title {
+            font-family: 'Pacifico', cursive;
             font-size: 36px;
-            color: #ff6b6b;
+            color: #ffd700;
             margin: 20px 0;
             text-transform: uppercase;
-            letter-spacing: 3px;
-            text-shadow: 3px 3px 0px #000;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #000, 4px 4px 0px #006699;
+            font-weight: bold;
         }
         
         .subtitle {
             font-size: 18px;
-            color: #4ecdc4;
+            color: white;
             margin-bottom: 30px;
+            text-shadow: 1px 1px 0px #000;
         }
         
         .play-button {
             display: inline-block;
-            background-color: #ff6b6b;
+            background: linear-gradient(to bottom, #ff9900, #ff6600);
             color: white;
             padding: 15px 30px;
             font-size: 20px;
             text-decoration: none;
-            border-radius: 5px;
+            border-radius: 8px;
             margin: 20px 0;
             font-weight: bold;
-            box-shadow: 0 4px 0 #d44d4d;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            box-shadow: 0 4px 0 #cc5200;
             transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         
         .play-button:hover {
-            background-color: #ff8585;
+            background: linear-gradient(to bottom, #ffaa33, #ff7722);
             transform: translateY(-2px);
+            box-shadow: 0 6px 0 #cc5200;
         }
         
         .play-button:active {
             transform: translateY(2px);
-            box-shadow: 0 1px 0 #d44d4d;
+            box-shadow: 0 2px 0 #cc5200;
         }
         
         .info-box {
-            background-color: #222;
-            border-radius: 8px;
+            background-color: rgba(34, 139, 34, 0.7);
+            border-radius: 10px;
             padding: 20px;
             margin: 30px 0;
             text-align: left;
+            border: 2px dashed #ffd700;
         }
         
         .section-title {
-            color: #ff6b6b;
-            border-bottom: 1px solid #333;
+            color: #ffd700;
+            border-bottom: 1px solid #ffd700;
             padding-bottom: 5px;
             margin-top: 0;
+            text-shadow: 1px 1px 0px #000;
         }
         
         .game-status {
-            background-color: #333;
+            background-color: rgba(255, 215, 0, 0.3);
             padding: 10px;
-            border-radius: 5px;
+            border-radius: 8px;
             margin-top: 20px;
-            color: #4ecdc4;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 0px #000;
         }
         
         .controls {
@@ -91,25 +115,49 @@
         
         .control-group {
             margin: 10px;
-            padding: 10px;
-            background-color: #333;
-            border-radius: 5px;
+            padding: 15px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
             min-width: 200px;
+            border: 1px solid #ffd700;
+        }
+        
+        .control-group h3 {
+            color: #ffd700;
+            margin-top: 0;
+            text-shadow: 1px 1px 0px #000;
         }
         
         .footer {
             margin-top: 40px;
-            font-size: 12px;
-            color: #666;
+            font-size: 14px;
+            color: #f9e8b0;
+            text-shadow: 1px 1px 0px #000;
+        }
+        
+        ul {
+            list-style-type: none;
+            padding-left: 10px;
+        }
+        
+        ul li {
+            padding: 5px 0;
+            position: relative;
+        }
+        
+        ul li:before {
+            content: "🌴";
+            position: absolute;
+            left: -25px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1 class="title">Boomerman Online</h1>
+        <h1 class="title">Island Bomber</h1>
         <p class="subtitle">Explosez vos adversaires dans ce jeu multijoueur inspiré du classique Bomberman!</p>
         
-        <a href="game.html" class="play-button">JOUER MAINTENANT</a>
+        <a href="game.html" class="play-button">Jouer Maintenant</a>
         
         <div class="game-status">
             <strong>Statut du jeu:</strong>
@@ -118,9 +166,9 @@
         
         <div class="info-box">
             <h2 class="section-title">À propos du jeu</h2>
-            <p>Boomerman Online est un jeu de type Bomberman où vous pouvez:</p>
+            <p>Island Bomber est un jeu de type Bomberman où vous pouvez:</p>
             <ul>
-                <li>Jouer en solo contre une IA</li>
+                <li>Jouer en solo contre le Pirate IA</li>
                 <li>Jouer en multijoueur avec vos amis</li>
                 <li>Créer et partager des parties via un code unique</li>
             </ul>
@@ -128,12 +176,12 @@
             <h2 class="section-title">Comment jouer</h2>
             <div class="controls">
                 <div class="control-group">
-                    <h3>Joueur 1</h3>
+                    <h3>Rasta Rouge</h3>
                     <p>Déplacement: ZQSD</p>
                     <p>Poser bombe: ESPACE</p>
                 </div>
                 <div class="control-group">
-                    <h3>Joueur 2</h3>
+                    <h3>Surfeur Bleu</h3>
                     <p>Déplacement: Flèches</p>
                     <p>Poser bombe: ESPACE</p>
                 </div>
@@ -150,12 +198,12 @@
         window.addEventListener('DOMContentLoaded', function() {
             const statusIndicator = document.getElementById('status-indicator');
             
-            // Vérifier si on peut accéder à index.html
+            // Vérifier si on peut accéder à game.html
             fetch('game.html')
                 .then(response => {
                     if (response.ok) {
                         statusIndicator.textContent = 'Le jeu est opérationnel! ✅';
-                        statusIndicator.style.color = '#4ecdc4';
+                        statusIndicator.style.color = '#ffffff';
                     } else {
                         statusIndicator.textContent = 'Problème d\'accès au jeu ❌';
                         statusIndicator.style.color = '#ff6b6b';
