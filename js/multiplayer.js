@@ -1,10 +1,4 @@
-// Gestion du multijoueur et des parties
-
-// Écouteurs pour les boutons de création/connexion
-document.getElementById('createBtn').addEventListener('click', createGame);
-document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
-document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
-
+// SYNC_MARKER: game_creation
 // Créer une nouvelle partie multijoueur
 function createGame() {
     // Générer un code de salle si non spécifié
@@ -30,7 +24,9 @@ function createGame() {
     joinGame(roomId, 'player1');
     gameInfo.textContent = `Partie créée ! Code: ${roomId} - En attente d'un autre joueur...`;
 }
+// END_SYNC_MARKER: game_creation
 
+// SYNC_MARKER: join_game
 // Rejoindre une partie existante
 function joinExistingGame() {
     const roomId = roomInput.value;
@@ -67,7 +63,9 @@ function joinExistingGame() {
         joinGame(roomId, 'player2');
     });
 }
+// END_SYNC_MARKER: join_game
 
+// SYNC_MARKER: create_single_player
 // Créer une partie solo contre l'IA
 function createSinglePlayerGame() {
     // Générer un code de salle pour le mode solo
@@ -92,12 +90,14 @@ function createSinglePlayerGame() {
     
     // Rejoindre la partie
     joinGame(roomId, 'player1');
-    gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le joueur 1 (rouge)`;
+    gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
     
     // Démarrer l'IA
     startAI();
 }
+// END_SYNC_MARKER: create_single_player
 
+// SYNC_MARKER: join_game_setup
 // Rejoindre une partie et configurer les écouteurs
 function joinGame(roomId, playerId) {
     const gameRef = database.ref(`games/${roomId}`);
@@ -120,7 +120,7 @@ function joinGame(roomId, playerId) {
         // Afficher un message quand le jeu commence
         if (gameState.gameStarted) {
             if (aiMode) {
-                gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le joueur 1 (rouge)`;
+                gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
             } else if (gameData.players.player1 && gameData.players.player2) {
                 gameInfo.textContent = `Combat sur l'île - Vous êtes le ${playerId === 'player1' ? 'Rasta Rouge' : 'Surfeur Bleu'}`;
             }
@@ -140,7 +140,9 @@ function joinGame(roomId, playerId) {
     document.getElementById('roomControls').style.display = 'none';
     document.getElementById('gameControls').style.display = 'none';
 }
+// END_SYNC_MARKER: join_game_setup
 
+// SYNC_MARKER: restart_game
 // Fonction pour redémarrer la partie
 function restartGame() {
     // Si on est en mode solo avec IA
@@ -169,7 +171,7 @@ function restartGame() {
         
         // Rejoindre la partie
         joinGame(roomId, 'player1');
-        gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le joueur 1 (rouge)`;
+        gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
         
         // Démarrer l'IA
         startAI();
@@ -196,13 +198,21 @@ function restartGame() {
         gameState.gameStarted = false;
     }
 }
+// END_SYNC_MARKER: restart_game
 
+// SYNC_MARKER: home_return
 // Fonction pour revenir au menu principal
 function returnToHome() {
     // Rediriger vers la page d'accueil
     window.location.href = 'index.html';
 }
+// END_SYNC_MARKER: home_return
 
-// Ajout des écouteurs d'événements pour les nouveaux boutons
+// SYNC_MARKER: button_listeners
+// Ajout des écouteurs d'événements pour les boutons
+document.getElementById('createBtn').addEventListener('click', createGame);
+document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
+document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
 document.getElementById('restartBtn').addEventListener('click', restartGame);
 document.getElementById('homeBtn').addEventListener('click', returnToHome);
+// END_SYNC_MARKER: button_listeners

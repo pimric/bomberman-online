@@ -1,3 +1,4 @@
+// SYNC_MARKER: game_constants
 // Configuration du jeu
 const GRID_SIZE = 15;
 const TILE_SIZE = 32;
@@ -16,7 +17,9 @@ const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
 
 // Configuration de l'IA
 const AI_MOVE_DELAY = 500; // Délai entre les mouvements de l'IA (ms)
+// END_SYNC_MARKER: game_constants
 
+// SYNC_MARKER: firebase_config
 // Configuration Firebase (à remplacer par vos propres identifiants)
 const firebaseConfig = {
   apiKey: "AIzaSyDEDfD0gETLAra2wu9e0V8YVECdshVWAEc",
@@ -30,7 +33,9 @@ const firebaseConfig = {
 // Initialiser Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
+// END_SYNC_MARKER: firebase_config
 
+// SYNC_MARKER: game_state
 // État du jeu global
 const gameState = {
     roomId: null,
@@ -42,7 +47,9 @@ const gameState = {
     gameStarted: false,
     keys: {}
 };
+// END_SYNC_MARKER: game_state
 
+// SYNC_MARKER: dom_refs
 // Obtenir les références DOM
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -51,3 +58,4 @@ const roomInput = document.getElementById('roomInput');
 const createBtn = document.getElementById('createBtn');
 const joinBtn = document.getElementById('joinBtn');
 const singlePlayerBtn = document.getElementById('singlePlayerBtn');
+// END_SYNC_MARKER: dom_refs

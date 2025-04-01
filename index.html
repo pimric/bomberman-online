@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+<!-- SYNC_MARKER: header -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -152,6 +153,7 @@
         }
     </style>
 </head>
+<!-- END_SYNC_MARKER: header -->
 <body>
     <div class="container">
         <h1 class="title">Island Bomber</h1>
@@ -163,6 +165,7 @@
             <span id="status-indicator">Vérification de la connexion...</span>
         </div>
         
+        <!-- SYNC_MARKER: game_info -->
         <div class="info-box">
             <h2 class="section-title">À propos du jeu</h2>
             <p>Island Bomber est un jeu de type Bomberman où vous pouvez:</p>
@@ -186,12 +189,16 @@
                 </div>
             </div>
         </div>
+        <!-- END_SYNC_MARKER: game_info -->
         
+        <!-- SYNC_MARKER: footer -->
         <div class="footer">
             <p>Développé par pimric © 2024</p>
         </div>
+        <!-- END_SYNC_MARKER: footer -->
     </div>
     
+    <!-- SYNC_MARKER: status_script -->
     <script>
         // Script pour vérifier si le jeu est fonctionnel
         window.addEventListener('DOMContentLoaded', function() {
@@ -215,5 +222,6 @@
                 });
         });
     </script>
+    <!-- END_SYNC_MARKER: status_script -->
 </body>
 </html>

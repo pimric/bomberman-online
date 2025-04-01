@@ -1,3 +1,4 @@
+/* SYNC_MARKER: body_styles */
 body {
     background: linear-gradient(135deg, #0099cc, #006699);
     display: flex;
@@ -12,7 +13,9 @@ body {
     background-size: 100px;
     background-blend-mode: soft-light;
 }
+/* END_SYNC_MARKER: body_styles */
 
+/* SYNC_MARKER: container_styles */
 #gameContainer {
     text-align: center;
     background-color: rgba(0, 0, 0, 0.5);
@@ -38,7 +41,9 @@ h1 {
     text-shadow: 2px 2px 0px #000, 4px 4px 0px #006699;
     font-weight: bold;
 }
+/* END_SYNC_MARKER: container_styles */
 
+/* SYNC_MARKER: controls_styles */
 #roomControls {
     margin: 20px 0;
     padding: 15px;
@@ -88,7 +93,9 @@ input {
 input::placeholder {
     color: #cc8800;
 }
+/* END_SYNC_MARKER: controls_styles */
 
+/* SYNC_MARKER: explosion_styles */
 /* Styles pour les explosions */
 .explosion-animation {
     position: absolute;
@@ -101,7 +108,9 @@ input::placeholder {
     0% { transform: scale(0.5); opacity: 1; }
     100% { transform: scale(1.5); opacity: 0; }
 }
+/* END_SYNC_MARKER: explosion_styles */
 
+/* SYNC_MARKER: game_buttons */
 .gameButton {
     background: linear-gradient(to bottom, #ff9900, #ff6600);
     color: white;
@@ -127,7 +136,9 @@ input::placeholder {
     transform: translateY(2px);
     box-shadow: 0 2px 0 #cc5200;
 }
+/* END_SYNC_MARKER: game_buttons */
 
+/* SYNC_MARKER: game_info */
 #gameInfo {
     background-color: rgba(255, 215, 0, 0.3);
     padding: 10px;
@@ -137,3 +148,4 @@ input::placeholder {
     text-shadow: 1px 1px 0px #000;
     letter-spacing: 1px;
 }
+/* END_SYNC_MARKER: game_info */

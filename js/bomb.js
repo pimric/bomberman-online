@@ -1,5 +1,4 @@
-// Logique des bombes et explosions
-
+// SYNC_MARKER: place_bomb
 // Placer une bombe
 function placeBomb() {
     if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
@@ -36,7 +35,9 @@ function placeBomb() {
         database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
     }
 }
+// END_SYNC_MARKER: place_bomb
 
+// SYNC_MARKER: explode_bomb
 // Déclencher l'explosion d'une bombe
 function explodeBomb(bomb) {
     if (!gameState.map || !bomb) return;
@@ -102,7 +103,9 @@ function explodeBomb(bomb) {
     // Vérifier si d'autres bombes sont touchées par l'explosion (réaction en chaîne)
     checkBombsInExplosion(explosionCells, bomb.id);
 }
+// END_SYNC_MARKER: explode_bomb
 
+// SYNC_MARKER: check_players
 // Vérifier si des joueurs sont touchés par l'explosion
 function checkPlayersInExplosion(explosionCells) {
     for (const playerId in gameState.players) {
@@ -137,7 +140,9 @@ function checkBombsInExplosion(explosionCells, excludeBombId) {
         }
     }
 }
+// END_SYNC_MARKER: check_players
 
+// SYNC_MARKER: update_explosions
 // Mettre à jour les explosions
 function updateExplosions() {
     const currentTime = Date.now();
@@ -156,7 +161,9 @@ function updateExplosions() {
         }
     }
 }
+// END_SYNC_MARKER: update_explosions
 
+// SYNC_MARKER: render_bombs
 // Dessiner les bombes
 function renderBombs() {
     if (!gameState.bombs) return;
@@ -222,7 +229,9 @@ function renderBombs() {
         ctx.fill();
     }
 }
+// END_SYNC_MARKER: render_bombs
 
+// SYNC_MARKER: render_explosions
 // Dessiner les explosions
 function renderExplosions() {
     if (!gameState.explosions) return;
@@ -277,3 +286,4 @@ function renderExplosions() {
         }
     }
 }
+// END_SYNC_MARKER: render_explosions
