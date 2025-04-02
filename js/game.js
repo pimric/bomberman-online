@@ -211,43 +211,22 @@ function update() {
     
     let playerMoved = false;
     
-    // Mouvement selon le joueur
-    if (gameState.playerId === 'player1') {
-        // Joueur 1 (ZQSD)
-        if (gameState.keys['z']) {
-            updatePlayerPosition(player, 0, -PLAYER_SPEED);
-            playerMoved = true;
-        }
-        if (gameState.keys['s']) {
-            updatePlayerPosition(player, 0, PLAYER_SPEED);
-            playerMoved = true;
-        }
-        if (gameState.keys['q']) {
-            updatePlayerPosition(player, -PLAYER_SPEED, 0);
-            playerMoved = true;
-        }
-        if (gameState.keys['d']) {
-            updatePlayerPosition(player, PLAYER_SPEED, 0);
-            playerMoved = true;
-        }
-    } else {
-        // Joueur 2 (Flèches)
-        if (gameState.keys['ArrowUp']) {
-            updatePlayerPosition(player, 0, -PLAYER_SPEED);
-            playerMoved = true;
-        }
-        if (gameState.keys['ArrowDown']) {
-            updatePlayerPosition(player, 0, PLAYER_SPEED);
-            playerMoved = true;
-        }
-        if (gameState.keys['ArrowLeft']) {
-            updatePlayerPosition(player, -PLAYER_SPEED, 0);
-            playerMoved = true;
-        }
-        if (gameState.keys['ArrowRight']) {
-            updatePlayerPosition(player, PLAYER_SPEED, 0);
-            playerMoved = true;
-        }
+    // Les deux joueurs utilisent les flèches directionnelles
+    if (gameState.keys['ArrowUp']) {
+        updatePlayerPosition(player, 0, -PLAYER_SPEED);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowDown']) {
+        updatePlayerPosition(player, 0, PLAYER_SPEED);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowLeft']) {
+        updatePlayerPosition(player, -PLAYER_SPEED, 0);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowRight']) {
+        updatePlayerPosition(player, PLAYER_SPEED, 0);
+        playerMoved = true;
     }
     
     // Mettre à jour la position sur Firebase si le joueur a bougé
