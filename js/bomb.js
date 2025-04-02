@@ -143,23 +143,46 @@ function checkBombsInExplosion(explosionCells, excludeBombId) {
 // END_SYNC_MARKER: check_players
 
 // SYNC_MARKER: update_explosions
-// Mettre à jour les explosions
-function updateExplosions() {
-    const currentTime = Date.now();
+// Mettre à jour l'état du jeu
+function update() {
+    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
     
-    // Vérifier si des bombes doivent exploser
-    for (const bomb of gameState.bombs) {
-        if (bomb.timer && bomb.timer <= currentTime) {
-            explodeBomb(bomb);
-        }
+    // Vérifier si le jeu est terminé
+    if (checkGameOver()) return;
+    
+    const player = gameState.players[gameState.playerId];
+    if (!player || !player.alive) return;
+    
+    let playerMoved = false;
+    
+    // Les deux joueurs utilisent les flèches directionnelles
+    if (gameState.keys['ArrowUp']) {
+        updatePlayerPosition(player, 0, -PLAYER_SPEED);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowDown']) {
+        updatePlayerPosition(player, 0, PLAYER_SPEED);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowLeft']) {
+        updatePlayerPosition(player, -PLAYER_SPEED, 0);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowRight']) {
+        updatePlayerPosition(player, PLAYER_SPEED, 0);
+        playerMoved = true;
     }
     
-    // Supprimer les explosions terminées
-    for (const explosion of gameState.explosions) {
-        if (explosion.timestamp + explosion.duration <= currentTime) {
-            database.ref(`games/${gameState.roomId}/explosions/${explosion.id}`).remove();
-        }
+    // Mettre à jour la position sur Firebase si le joueur a bougé
+    if (playerMoved) {
+        database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
+            x: player.x,
+            y: player.y
+        });
     }
+    
+    // Mettre à jour les explosions
+    updateExplosions();
 }
 // END_SYNC_MARKER: update_explosions
 
