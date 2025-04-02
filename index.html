@@ -215,6 +215,38 @@
                     statusIndicator.style.color = '#ff6b6b';
                     console.error('Erreur:', error);
                 });
+                
+            // Ajouter les éléments d'animation du fond
+            const oceanWaves = document.createElement('div');
+            oceanWaves.className = 'ocean-waves';
+            
+            // Ajouter les vagues
+            for (let i = 0; i < 3; i++) {
+                const wave = document.createElement('div');
+                wave.className = 'wave';
+                oceanWaves.appendChild(wave);
+            }
+            
+            // Créer un nuage
+            const cloud = document.createElement('div');
+            cloud.className = 'cloud';
+            
+            // Dessiner le nuage avec des divs arrondies
+            for (let i = 0; i < 3; i++) {
+                const cloudPart = document.createElement('div');
+                cloudPart.style.width = `${40 + Math.random() * 30}px`;
+                cloudPart.style.height = `${20 + Math.random() * 20}px`;
+                cloudPart.style.borderRadius = '50%';
+                cloudPart.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
+                cloudPart.style.position = 'absolute';
+                cloudPart.style.left = `${i * 20}px`;
+                cloudPart.style.top = `${i % 2 === 0 ? 0 : 10}px`;
+                cloud.appendChild(cloudPart);
+            }
+            
+            // Ajouter les éléments au body
+            document.body.appendChild(oceanWaves);
+            document.body.appendChild(cloud);
         });
     </script>
     <!-- END_SYNC_MARKER: status_script -->
