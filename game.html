@@ -1342,34 +1342,27 @@
         // END_SYNC_MARKER: game_functions
 
         // SYNC_MARKER: event_listeners
-        // Gérer les entrées clavier
-        window.addEventListener('keydown', (e) => {
-            gameState.keys[e.key] = true;
-            
-            // Touche espace pour poser une bombe
-            if (e.key === ' ' && gameState.gameStarted) {
-                placeBomb();
-            }
-        });
+// Gérer les entrées clavier
+window.addEventListener('keydown', (e) => {
+    gameState.keys[e.key] = true;
+    
+    // Touche espace pour poser une bombe
+    if (e.key === ' ' && gameState.gameStarted) {
+        placeBomb();
+    }
+});
 
-        window.addEventListener('keyup', (e) => {
-            gameState.keys[e.key] = false;
-        });
+window.addEventListener('keyup', (e) => {
+    gameState.keys[e.key] = false;
+});
 
-        // Nettoyage lors de la fermeture de la page
-        window.addEventListener('beforeunload', () => {
-            if (aiMoveInterval) {
-                clearInterval(aiMoveInterval);
-            }
-        });
-
-        // Ajout des écouteurs d'événements pour les boutons
-        document.getElementById('createBtn').addEventListener('click', createGame);
-        document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
-        document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
-        document.getElementById('restartBtn').addEventListener('click', restartGame);
-        document.getElementById('homeBtn').addEventListener('click', returnToHome);
-        // END_SYNC_MARKER: event_listeners
+// Nettoyage lors de la fermeture de la page
+window.addEventListener('beforeunload', () => {
+    if (aiMoveInterval) {
+        clearInterval(aiMoveInterval);
+    }
+});
+// END_SYNC_MARKER: event_listeners
 
         // SYNC_MARKER: game_loop
         // Boucle de jeu principale

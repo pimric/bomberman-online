@@ -165,10 +165,52 @@ function checkGameOver() {
 // END_SYNC_MARKER: game_over_check
 
 // SYNC_MARKER: update_function
-// Cette fonction est maintenant définie dans engine.js
-// Pour maintenir la compatibilité, nous gardons le marqueur mais référençons
-// La fonction centralisée qui est maintenant importée
-// Voir engine.js:core_update pour l'implémentation
+/**
+ * Fonction centrale de mise à jour du jeu.
+ * @depends config.js:game_constants
+ * @depends game.js:position_validation
+ * @provides function update()
+ */
+function update() {
+    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+    
+    // Vérifier si le jeu est terminé
+    if (checkGameOver()) return;
+    
+    const player = gameState.players[gameState.playerId];
+    if (!player || !player.alive) return;
+    
+    let playerMoved = false;
+    
+    // Mouvement uniquement avec les flèches pour tous les joueurs
+    if (gameState.keys['ArrowUp']) {
+        updatePlayerPosition(player, 0, -PLAYER_SPEED);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowDown']) {
+        updatePlayerPosition(player, 0, PLAYER_SPEED);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowLeft']) {
+        updatePlayerPosition(player, -PLAYER_SPEED, 0);
+        playerMoved = true;
+    }
+    if (gameState.keys['ArrowRight']) {
+        updatePlayerPosition(player, PLAYER_SPEED, 0);
+        playerMoved = true;
+    }
+    
+    // Mettre à jour la position sur Firebase si le joueur a bougé
+    if (playerMoved) {
+        database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
+            x: player.x,
+            y: player.y
+        });
+    }
+    
+    // Mettre à jour les explosions
+    updateExplosions();
+}
 // END_SYNC_MARKER: update_function
 
 // SYNC_MARKER: render_function
