@@ -209,10 +209,50 @@ function returnToHome() {
 // END_SYNC_MARKER: home_return
 
 // SYNC_MARKER: button_listeners
-// Ajout des écouteurs d'événements pour les boutons
-document.getElementById('createBtn').addEventListener('click', createGame);
-document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
-document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
-document.getElementById('restartBtn').addEventListener('click', restartGame);
-document.getElementById('homeBtn').addEventListener('click', returnToHome);
+// Attendre que le DOM soit complètement chargé
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM chargé, ajout des écouteurs d\'événements');
+    
+    // Vérifier si les éléments existent
+    const createButton = document.getElementById('createBtn');
+    const joinButton = document.getElementById('joinBtn');
+    const singlePlayerButton = document.getElementById('singlePlayerBtn');
+    const restartButton = document.getElementById('restartBtn');
+    const homeButton = document.getElementById('homeBtn');
+    
+    if (createButton) {
+        createButton.addEventListener('click', createGame);
+        console.log('Écouteur ajouté pour createBtn');
+    } else {
+        console.error('Element createBtn non trouvé');
+    }
+    
+    if (joinButton) {
+        joinButton.addEventListener('click', joinExistingGame);
+        console.log('Écouteur ajouté pour joinBtn');
+    } else {
+        console.error('Element joinBtn non trouvé');
+    }
+    
+    if (singlePlayerButton) {
+        singlePlayerButton.addEventListener('click', createSinglePlayerGame);
+        console.log('Écouteur ajouté pour singlePlayerBtn');
+    } else {
+        console.error('Element singlePlayerBtn non trouvé');
+    }
+    
+    if (restartButton) {
+        restartButton.addEventListener('click', restartGame);
+        console.log('Écouteur ajouté pour restartBtn');
+    } else {
+        console.error('Element restartBtn non trouvé');
+    }
+    
+    if (homeButton) {
+        homeButton.addEventListener('click', returnToHome);
+        console.log('Écouteur ajouté pour homeBtn');
+    } else {
+        console.error('Element homeBtn non trouvé');
+    }
+});
 // END_SYNC_MARKER: button_listeners
