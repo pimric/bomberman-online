@@ -209,50 +209,7 @@ function returnToHome() {
 // END_SYNC_MARKER: home_return
 
 // SYNC_MARKER: button_listeners
-// Attendre que le DOM soit complètement chargé
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM chargé, ajout des écouteurs d\'événements');
-    
-    // Vérifier si les éléments existent
-    const createButton = document.getElementById('createBtn');
-    const joinButton = document.getElementById('joinBtn');
-    const singlePlayerButton = document.getElementById('singlePlayerBtn');
-    const restartButton = document.getElementById('restartBtn');
-    const homeButton = document.getElementById('homeBtn');
-    
-    if (createButton) {
-        createButton.addEventListener('click', createGame);
-        console.log('Écouteur ajouté pour createBtn');
-    } else {
-        console.error('Element createBtn non trouvé');
-    }
-    
-    if (joinButton) {
-        joinButton.addEventListener('click', joinExistingGame);
-        console.log('Écouteur ajouté pour joinBtn');
-    } else {
-        console.error('Element joinBtn non trouvé');
-    }
-    
-    if (singlePlayerButton) {
-        singlePlayerButton.addEventListener('click', createSinglePlayerGame);
-        console.log('Écouteur ajouté pour singlePlayerBtn');
-    } else {
-        console.error('Element singlePlayerBtn non trouvé');
-    }
-    
-    if (restartButton) {
-        restartButton.addEventListener('click', restartGame);
-        console.log('Écouteur ajouté pour restartBtn');
-    } else {
-        console.error('Element restartBtn non trouvé');
-    }
-    
-    if (homeButton) {
-        homeButton.addEventListener('click', returnToHome);
-        console.log('Écouteur ajouté pour homeBtn');
-    } else {
-        console.error('Element homeBtn non trouvé');
-    }
-});
+// On supprime les écouteurs d'événements dupliqués ici pour éviter les conflits
+// Ces fonctionnalités sont maintenant gérées dans le script de game.html uniquement
+console.log('multiplayer.js chargé - Les écouteurs d\'événements seront gérés par le script principal');
 // END_SYNC_MARKER: button_listeners

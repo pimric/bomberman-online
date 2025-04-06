@@ -191,60 +191,122 @@
     <script src="multiplayer.js"></script>
 
     <!-- SYNC_MARKER: game_script -->
-    <script>
-        // Initialisation minimale nécessaire
-        console.log("Script de débogage chargé");
+<script>
+    // Fonction pour ajouter les écouteurs d'événements de manière fiable
+    function initializeGame() {
+        console.log("Initialisation du jeu...");
         
-        // Démarrer le jeu quand tout est chargé
-        window.addEventListener('load', function() {
-            console.log("Page entièrement chargée");
-            console.log("Boutons disponibles:", {
-                createBtn: document.getElementById('createBtn'),
-                joinBtn: document.getElementById('joinBtn'),
-                singlePlayerBtn: document.getElementById('singlePlayerBtn'),
-                restartBtn: document.getElementById('restartBtn'),
-                homeBtn: document.getElementById('homeBtn')
-            });
+        // Vérifier si tous les éléments nécessaires sont disponibles
+        const elements = {
+            createBtn: document.getElementById('createBtn'),
+            joinBtn: document.getElementById('joinBtn'),
+            singlePlayerBtn: document.getElementById('singlePlayerBtn'),
+            restartBtn: document.getElementById('restartBtn'),
+            homeBtn: document.getElementById('homeBtn'),
+            roomInput: document.getElementById('roomInput'),
+            gameInfo: document.getElementById('gameInfo'),
+            canvas: document.getElementById('gameCanvas')
+        };
+        
+        console.log("Éléments disponibles:", elements);
+        
+        // Vérifier si les fonctions requises sont disponibles
+        if (typeof createGame !== 'function' || 
+            typeof joinExistingGame !== 'function' || 
+            typeof createSinglePlayerGame !== 'function' || 
+            typeof restartGame !== 'function' || 
+            typeof returnToHome !== 'function') {
             
-            // Attacher manuellement les écouteurs d'événements
-            if (document.getElementById('createBtn')) {
-                document.getElementById('createBtn').addEventListener('click', function() {
-                    console.log("Bouton createBtn cliqué");
+            console.error("Erreur critique: Fonctions de jeu non définies! Vérifiez l'ordre de chargement des scripts.");
+            if (elements.gameInfo) {
+                elements.gameInfo.textContent = "Erreur: Les fonctions de jeu ne sont pas chargées correctement. Rafraîchissez la page.";
+            }
+            return;
+        }
+        
+        // Attacher les écouteurs d'événements avec gestion d'erreurs
+        if (elements.createBtn) {
+            elements.createBtn.addEventListener('click', function() {
+                console.log("Bouton createBtn cliqué");
+                try {
                     createGame();
-                });
-            }
-            
-            if (document.getElementById('joinBtn')) {
-                document.getElementById('joinBtn').addEventListener('click', function() {
-                    console.log("Bouton joinBtn cliqué");
+                } catch (error) {
+                    console.error("Erreur lors de la création de partie:", error);
+                    alert("Erreur lors de la création de partie: " + error.message);
+                }
+            });
+        }
+        
+        if (elements.joinBtn) {
+            elements.joinBtn.addEventListener('click', function() {
+                console.log("Bouton joinBtn cliqué");
+                try {
                     joinExistingGame();
-                });
-            }
-            
-            if (document.getElementById('singlePlayerBtn')) {
-                document.getElementById('singlePlayerBtn').addEventListener('click', function() {
-                    console.log("Bouton singlePlayerBtn cliqué");
+                } catch (error) {
+                    console.error("Erreur lors de la connexion à la partie:", error);
+                    alert("Erreur lors de la connexion: " + error.message);
+                }
+            });
+        }
+        
+        if (elements.singlePlayerBtn) {
+            elements.singlePlayerBtn.addEventListener('click', function() {
+                console.log("Bouton singlePlayerBtn cliqué");
+                try {
                     createSinglePlayerGame();
-                });
-            }
-            
-            if (document.getElementById('restartBtn')) {
-                document.getElementById('restartBtn').addEventListener('click', function() {
-                    console.log("Bouton restartBtn cliqué");
+                } catch (error) {
+                    console.error("Erreur lors du démarrage du mode solo:", error);
+                    alert("Erreur lors du démarrage du mode solo: " + error.message);
+                }
+            });
+        }
+        
+        if (elements.restartBtn) {
+            elements.restartBtn.addEventListener('click', function() {
+                console.log("Bouton restartBtn cliqué");
+                try {
                     restartGame();
-                });
-            }
-            
-            if (document.getElementById('homeBtn')) {
-                document.getElementById('homeBtn').addEventListener('click', function() {
-                    console.log("Bouton homeBtn cliqué");
+                } catch (error) {
+                    console.error("Erreur lors du redémarrage:", error);
+                    alert("Erreur lors du redémarrage: " + error.message);
+                }
+            });
+        }
+        
+        if (elements.homeBtn) {
+            elements.homeBtn.addEventListener('click', function() {
+                console.log("Bouton homeBtn cliqué");
+                try {
                     returnToHome();
-                });
-            }
-            
-            // Démarrer le jeu
+                } catch (error) {
+                    console.error("Erreur lors du retour à l'accueil:", error);
+                    alert("Erreur lors du retour à l'accueil: " + error.message);
+                }
+            });
+        }
+        
+        console.log("Tous les écouteurs d'événements ont été ajoutés avec succès");
+        
+        // Démarrer la boucle de jeu
+        try {
             gameLoop();
-        });
-    </script>
+            console.log("Boucle de jeu démarrée");
+        } catch (error) {
+            console.error("Erreur lors du démarrage de la boucle de jeu:", error);
+            if (elements.gameInfo) {
+                elements.gameInfo.textContent = "Erreur: Impossible de démarrer le jeu. Rafraîchissez la page.";
+            }
+        }
+    }
+
+    // Attendre que TOUS les scripts soient chargés avant d'initialiser
+    window.addEventListener('load', function() {
+        console.log("Page entièrement chargée, initialisation du jeu...");
+        
+        // Petit délai pour s'assurer que tous les scripts sont bien initialisés
+        setTimeout(initializeGame, 100);
+    });
+</script>
+<!-- END_SYNC_MARKER: game_script -->
 </body>
 </html>
