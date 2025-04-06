@@ -1,5 +1,6 @@
 // SYNC_MARKER: core_imports
 // Ce marqueur est pour les importations et déclarations nécessaires
+console.log("Chargement du moteur de jeu...");
 // END_SYNC_MARKER: core_imports
 
 // SYNC_MARKER: core_update
@@ -10,6 +11,12 @@
  * @provides function update()
  */
 function update() {
+    // Vérifier que les états nécessaires sont disponibles
+    if (!gameState) {
+        console.error("gameState n'est pas défini");
+        return;
+    }
+    
     if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
     
     // Vérifier si le jeu est terminé
@@ -39,7 +46,7 @@ function update() {
     }
     
     // Mettre à jour la position sur Firebase si le joueur a bougé
-    if (playerMoved) {
+    if (playerMoved && database) {
         database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
             x: player.x,
             y: player.y
@@ -58,11 +65,17 @@ function update() {
  * @provides function render()
  */
 function render() {
+    // Vérifier que le contexte de dessin est disponible
+    if (!ctx || !canvas) {
+        console.error("Le contexte de dessin n'est pas disponible");
+        return;
+    }
+    
     // Effacer le canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // Si pas de jeu en cours, afficher un écran d'attente
-    if (!gameState.map || gameState.map.length === 0) {
+    if (!gameState || !gameState.map || gameState.map.length === 0) {
         renderWaitingScreen();
         return;
     }
@@ -94,6 +107,11 @@ function renderWaitingScreen() {
 function renderMap() {
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
+            // Vérifier que les données existent
+            if (!gameState.map[y] || typeof gameState.map[y][x] === 'undefined') {
+                continue;
+            }
+            
             const tileType = gameState.map[y][x];
             const tileX = x * TILE_SIZE;
             const tileY = y * TILE_SIZE;
@@ -156,6 +174,8 @@ function renderBrickTile(tileX, tileY) {
 
 // Rendu des joueurs
 function renderPlayers() {
+    if (!gameState.players) return;
+    
     for (const playerId in gameState.players) {
         const playerData = gameState.players[playerId];
         if (playerData && playerData.alive) {
@@ -197,11 +217,23 @@ function renderPlayers() {
  */
 // Vérification de position améliorée
 function isValidPosition(x, y) {
+    // Vérifier que les données nécessaires sont disponibles
+    if (!gameState || !gameState.map) {
+        console.error("Données de jeu non disponibles pour vérifier la position");
+        return false;
+    }
+    
     const gridX = Math.floor(x / TILE_SIZE);
     const gridY = Math.floor(y / TILE_SIZE);
     
     // Vérifier si on est dans les limites de la carte
     if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) {
+        return false;
+    }
+    
+    // Vérifier que la case existe dans la carte
+    if (!gameState.map[gridY] || typeof gameState.map[gridY][gridX] === 'undefined') {
+        console.warn("Case non définie dans la carte", {gridX, gridY});
         return false;
     }
     
@@ -224,6 +256,8 @@ function isValidPosition(x, y) {
         // Si ce point est hors des limites ou sur un obstacle
         if (pointGridX < 0 || pointGridX >= GRID_SIZE || 
             pointGridY < 0 || pointGridY >= GRID_SIZE ||
+            !gameState.map[pointGridY] || 
+            typeof gameState.map[pointGridY][pointGridX] === 'undefined' ||
             gameState.map[pointGridY][pointGridX] !== TILE_TYPES.EMPTY) {
             return false;
         }
@@ -234,6 +268,11 @@ function isValidPosition(x, y) {
 
 // Vérifier si des joueurs sont touchés par l'explosion
 function checkPlayersInExplosion(explosionCells) {
+    if (!gameState || !gameState.players || !database || !gameState.roomId) {
+        console.error("Données manquantes pour vérifier les joueurs dans l'explosion");
+        return;
+    }
+    
     for (const playerId in gameState.players) {
         const player = gameState.players[playerId];
         if (!player || !player.alive) continue;
@@ -254,6 +293,11 @@ function checkPlayersInExplosion(explosionCells) {
 
 // Vérifier si d'autres bombes sont touchées par l'explosion
 function checkBombsInExplosion(explosionCells, excludeBombId) {
+    if (!gameState || !gameState.bombs) {
+        console.error("Données manquantes pour vérifier les bombes dans l'explosion");
+        return;
+    }
+    
     for (const bomb of gameState.bombs) {
         if (bomb.id === excludeBombId) continue;
         
@@ -275,8 +319,21 @@ function checkBombsInExplosion(explosionCells, excludeBombId) {
  * @depends core_render
  */
 function gameLoop() {
-    update();
-    render();
-    requestAnimationFrame(gameLoop);
+    try {
+        update();
+        render();
+        requestAnimationFrame(gameLoop);
+    } catch (error) {
+        console.error("Erreur dans la boucle de jeu:", error);
+        
+        // En cas d'erreur critique, tenter de continuer
+        setTimeout(() => {
+            console.log("Tentative de reprise de la boucle de jeu...");
+            requestAnimationFrame(gameLoop);
+        }, 1000);
+    }
 }
 // END_SYNC_MARKER: core_game_loop
+
+// Signaler que le script a été chargé avec succès
+logScriptLoaded('engine.js');

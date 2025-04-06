@@ -170,11 +170,14 @@
     </div>
 
     <!-- SYNC_MARKER: game_controls -->
-<div id="gameControls" style="display: none; margin-top: 10px; text-align: center; width: 100%;">
-    <button id="restartBtn" class="gameButton">Nouvelle Partie</button>
-    <button id="homeBtn" class="gameButton">Retour à l'île</button>
-</div>
-<!-- END_SYNC_MARKER: game_controls -->
+    <div id="gameControls" style="display: none; margin-top: 10px; text-align: center; width: 100%;">
+        <button id="restartBtn" class="gameButton">Nouvelle Partie</button>
+        <button id="homeBtn" class="gameButton">Retour à l'île</button>
+    </div>
+    <!-- END_SYNC_MARKER: game_controls -->
+
+    <!-- Script de débogage (chargé en premier) -->
+    <script src="debugger.js"></script>
 
     <!-- SYNC_MARKER: firebase_import -->
     <!-- Import Firebase SDK -->
@@ -182,7 +185,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
     <!-- END_SYNC_MARKER: firebase_import -->
 
-    <!-- Ajout de l'import du moteur de jeu centralisé -->
+    <!-- Import des scripts du jeu dans l'ordre correct -->
     <script src="config.js"></script>
     <script src="engine.js"></script>
     <script src="bomb.js"></script>
@@ -191,122 +194,135 @@
     <script src="multiplayer.js"></script>
 
     <!-- SYNC_MARKER: game_script -->
-<script>
-    // Fonction pour ajouter les écouteurs d'événements de manière fiable
-    function initializeGame() {
-        console.log("Initialisation du jeu...");
-        
-        // Vérifier si tous les éléments nécessaires sont disponibles
-        const elements = {
-            createBtn: document.getElementById('createBtn'),
-            joinBtn: document.getElementById('joinBtn'),
-            singlePlayerBtn: document.getElementById('singlePlayerBtn'),
-            restartBtn: document.getElementById('restartBtn'),
-            homeBtn: document.getElementById('homeBtn'),
-            roomInput: document.getElementById('roomInput'),
-            gameInfo: document.getElementById('gameInfo'),
-            canvas: document.getElementById('gameCanvas')
-        };
-        
-        console.log("Éléments disponibles:", elements);
-        
-        // Vérifier si les fonctions requises sont disponibles
-        if (typeof createGame !== 'function' || 
-            typeof joinExistingGame !== 'function' || 
-            typeof createSinglePlayerGame !== 'function' || 
-            typeof restartGame !== 'function' || 
-            typeof returnToHome !== 'function') {
+    <script>
+        // Script principal d'initialisation du jeu
+        (function() {
+            console.log("Script principal d'initialisation du jeu chargé");
             
-            console.error("Erreur critique: Fonctions de jeu non définies! Vérifiez l'ordre de chargement des scripts.");
-            if (elements.gameInfo) {
-                elements.gameInfo.textContent = "Erreur: Les fonctions de jeu ne sont pas chargées correctement. Rafraîchissez la page.";
-            }
-            return;
-        }
-        
-        // Attacher les écouteurs d'événements avec gestion d'erreurs
-        if (elements.createBtn) {
-            elements.createBtn.addEventListener('click', function() {
-                console.log("Bouton createBtn cliqué");
-                try {
+            // S'assurer que tout est chargé avant d'initialiser le jeu
+            window.addEventListener('load', function() {
+                console.log("Page entièrement chargée, préparation de l'initialisation...");
+                
+                // Donner un peu de temps pour que tout soit correctement initialisé
+                setTimeout(function() {
+                    initializeGame();
+                }, 100);
+            });
+            
+            // Fonction principale d'initialisation du jeu
+            function initializeGame() {
+                console.log("Initialisation du jeu...");
+                
+                // Vérifier que les éléments DOM sont disponibles
+                const elements = {
+                    createBtn: document.getElementById('createBtn'),
+                    joinBtn: document.getElementById('joinBtn'),
+                    singlePlayerBtn: document.getElementById('singlePlayerBtn'),
+                    restartBtn: document.getElementById('restartBtn'),
+                    homeBtn: document.getElementById('homeBtn'),
+                    roomInput: document.getElementById('roomInput'),
+                    gameInfo: document.getElementById('gameInfo'),
+                    canvas: document.getElementById('gameCanvas')
+                };
+                
+                // Vérifier que tous les éléments nécessaires existent
+                let missingElements = [];
+                for (const [name, element] of Object.entries(elements)) {
+                    if (!element) {
+                        missingElements.push(name);
+                    }
+                }
+                
+                if (missingElements.length > 0) {
+                    console.error("Éléments manquants:", missingElements);
+                    alert("Erreur d'initialisation: Éléments DOM manquants.");
+                    return;
+                }
+                
+                // Vérifier que les fonctions nécessaires existent
+                if (typeof createGame !== 'function' || 
+                    typeof joinExistingGame !== 'function' || 
+                    typeof createSinglePlayerGame !== 'function' || 
+                    typeof restartGame !== 'function' || 
+                    typeof returnToHome !== 'function' || 
+                    typeof gameLoop !== 'function') {
+                    
+                    console.error("Erreur critique: Des fonctions essentielles ne sont pas définies.");
+                    elements.gameInfo.textContent = "Erreur: Les fonctions de jeu ne sont pas chargées correctement. Rafraîchissez la page.";
+                    return;
+                }
+                
+                console.log("Tous les éléments et fonctions sont disponibles");
+                
+                // Fonction d'aide pour attachement d'événements sécurisé
+                function attachEventSafely(element, eventType, handler) {
+                    try {
+                        // Supprimer d'abord tous les écouteurs existants pour éviter les doublons
+                        const clone = element.cloneNode(true);
+                        element.parentNode.replaceChild(clone, element);
+                        
+                        clone.addEventListener(eventType, function(event) {
+                            try {
+                                handler(event);
+                            } catch (error) {
+                                console.error(`Erreur dans le gestionnaire d'événement pour ${element.id}:`, error);
+                                alert(`Une erreur est survenue: ${error.message}`);
+                            }
+                        });
+                        
+                        return clone;
+                    } catch (error) {
+                        console.error(`Erreur lors de l'attachement de l'événement pour ${element.id}:`, error);
+                        return element;
+                    }
+                }
+                
+                // Attacher les événements de manière sécurisée
+                elements.createBtn = attachEventSafely(elements.createBtn, 'click', function() {
+                    console.log("Bouton createBtn cliqué");
                     createGame();
-                } catch (error) {
-                    console.error("Erreur lors de la création de partie:", error);
-                    alert("Erreur lors de la création de partie: " + error.message);
-                }
-            });
-        }
-        
-        if (elements.joinBtn) {
-            elements.joinBtn.addEventListener('click', function() {
-                console.log("Bouton joinBtn cliqué");
-                try {
+                });
+                
+                elements.joinBtn = attachEventSafely(elements.joinBtn, 'click', function() {
+                    console.log("Bouton joinBtn cliqué");
                     joinExistingGame();
-                } catch (error) {
-                    console.error("Erreur lors de la connexion à la partie:", error);
-                    alert("Erreur lors de la connexion: " + error.message);
-                }
-            });
-        }
-        
-        if (elements.singlePlayerBtn) {
-            elements.singlePlayerBtn.addEventListener('click', function() {
-                console.log("Bouton singlePlayerBtn cliqué");
-                try {
+                });
+                
+                elements.singlePlayerBtn = attachEventSafely(elements.singlePlayerBtn, 'click', function() {
+                    console.log("Bouton singlePlayerBtn cliqué");
                     createSinglePlayerGame();
-                } catch (error) {
-                    console.error("Erreur lors du démarrage du mode solo:", error);
-                    alert("Erreur lors du démarrage du mode solo: " + error.message);
-                }
-            });
-        }
-        
-        if (elements.restartBtn) {
-            elements.restartBtn.addEventListener('click', function() {
-                console.log("Bouton restartBtn cliqué");
-                try {
+                });
+                
+                elements.restartBtn = attachEventSafely(elements.restartBtn, 'click', function() {
+                    console.log("Bouton restartBtn cliqué");
                     restartGame();
-                } catch (error) {
-                    console.error("Erreur lors du redémarrage:", error);
-                    alert("Erreur lors du redémarrage: " + error.message);
-                }
-            });
-        }
-        
-        if (elements.homeBtn) {
-            elements.homeBtn.addEventListener('click', function() {
-                console.log("Bouton homeBtn cliqué");
-                try {
+                });
+                
+                elements.homeBtn = attachEventSafely(elements.homeBtn, 'click', function() {
+                    console.log("Bouton homeBtn cliqué");
                     returnToHome();
+                });
+                
+                console.log("Événements attachés avec succès");
+                
+                // Initialiser le jeu
+                try {
+                    // Assurer que la référence au canvas est correcte
+                    if (canvas && ctx) {
+                        console.log("Canvas et contexte disponibles, démarrage de la boucle de jeu");
+                        window.debugState.gameInitialized = true;
+                        gameLoop();
+                    } else {
+                        console.error("Canvas ou contexte non disponible");
+                        elements.gameInfo.textContent = "Erreur: Le canvas n'est pas disponible. Rafraîchissez la page.";
+                    }
                 } catch (error) {
-                    console.error("Erreur lors du retour à l'accueil:", error);
-                    alert("Erreur lors du retour à l'accueil: " + error.message);
+                    console.error("Erreur lors de l'initialisation du jeu:", error);
+                    elements.gameInfo.textContent = "Erreur: Impossible d'initialiser le jeu. Rafraîchissez la page.";
                 }
-            });
-        }
-        
-        console.log("Tous les écouteurs d'événements ont été ajoutés avec succès");
-        
-        // Démarrer la boucle de jeu
-        try {
-            gameLoop();
-            console.log("Boucle de jeu démarrée");
-        } catch (error) {
-            console.error("Erreur lors du démarrage de la boucle de jeu:", error);
-            if (elements.gameInfo) {
-                elements.gameInfo.textContent = "Erreur: Impossible de démarrer le jeu. Rafraîchissez la page.";
             }
-        }
-    }
-
-    // Attendre que TOUS les scripts soient chargés avant d'initialiser
-    window.addEventListener('load', function() {
-        console.log("Page entièrement chargée, initialisation du jeu...");
-        
-        // Petit délai pour s'assurer que tous les scripts sont bien initialisés
-        setTimeout(initializeGame, 100);
-    });
-</script>
-<!-- END_SYNC_MARKER: game_script -->
+        })();
+    </script>
+    <!-- END_SYNC_MARKER: game_script -->
 </body>
 </html>
