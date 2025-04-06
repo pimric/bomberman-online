@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Boutons</title>
+</head>
+<body>
+    <button id="testBtn">Test Button</button>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
+    
+    <script>
+        // Fonction simple pour tester
+        function testFunction() {
+            console.log("Bouton cliqué!");
+            alert("Le bouton fonctionne!");
+        }
+        
+        // Attendre que le document soit chargé
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM chargé");
+            
+            // Attacher l'écouteur d'événement
+            const testBtn = document.getElementById('testBtn');
+            if (testBtn) {
+                console.log("Bouton trouvé");
+                testBtn.addEventListener('click', testFunction);
+            } else {
+                console.error("Bouton non trouvé");
+            }
+        });
+    </script>
+</body>
+</html>
