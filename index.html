@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="fr">
-<!-- SYNC_MARKER: header -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -153,10 +152,10 @@
         }
     </style>
 </head>
-<!-- END_SYNC_MARKER: header -->
 <body>
     <div class="container">
         <h1 class="title">Island Bomber</h1>
+        <p class="subtitle">Explosez vos adversaires dans ce jeu multijoueur inspiré du classique Bomberman!</p>
         
         <a href="game.html" class="play-button">Jouer Maintenant</a>
         
@@ -165,7 +164,6 @@
             <span id="status-indicator">Vérification de la connexion...</span>
         </div>
         
-        <!-- SYNC_MARKER: game_info -->
         <div class="info-box">
             <h2 class="section-title">À propos du jeu</h2>
             <p>Island Bomber est un jeu de type Bomberman où vous pouvez:</p>
@@ -178,22 +176,23 @@
             <h2 class="section-title">Comment jouer</h2>
             <div class="controls">
                 <div class="control-group">
-                    <h3>Tous les joueurs</h3>
+                    <h3>Rasta Rouge</h3>
+                    <p>Déplacement: ZQSD</p>
+                    <p>Poser bombe: ESPACE</p>
+                </div>
+                <div class="control-group">
+                    <h3>Surfeur Bleu</h3>
                     <p>Déplacement: Flèches</p>
                     <p>Poser bombe: ESPACE</p>
                 </div>
             </div>
         </div>
-        <!-- END_SYNC_MARKER: game_info -->
         
-        <!-- SYNC_MARKER: footer -->
         <div class="footer">
             <p>Développé par pimric © 2024</p>
         </div>
-        <!-- END_SYNC_MARKER: footer -->
     </div>
     
-    <!-- SYNC_MARKER: status_script -->
     <script>
         // Script pour vérifier si le jeu est fonctionnel
         window.addEventListener('DOMContentLoaded', function() {
@@ -217,6 +216,5 @@
                 });
         });
     </script>
-    <!-- END_SYNC_MARKER: status_script -->
 </body>
 </html>

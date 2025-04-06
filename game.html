@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="fr">
-<!-- SYNC_MARKER: game_header -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -149,40 +148,30 @@
         }
     </style>
 </head>
-<!-- END_SYNC_MARKER: game_header -->
 <body>
     <div id="gameContainer">
         <h1>Island Bomber</h1>
         
-        <!-- SYNC_MARKER: room_controls -->
         <div id="roomControls">
             <input type="text" id="roomInput" placeholder="Code de partie">
             <button id="createBtn">Créer partie</button>
             <button id="joinBtn">Rejoindre partie</button>
             <button id="singlePlayerBtn">Affronter le Pirate IA</button>
         </div>
-        <!-- END_SYNC_MARKER: room_controls -->
         
-        <!-- SYNC_MARKER: game_info_section -->
         <div id="gameInfo">Bienvenue sur l'île ! Prêt à exploser des noix de coco ?</div>
         <canvas id="gameCanvas" width="480" height="480"></canvas>
-        <!-- END_SYNC_MARKER: game_info_section -->
     </div>
 
-    <!-- SYNC_MARKER: game_controls -->
     <div id="gameControls" style="display: none; margin-top: 10px;">
         <button id="restartBtn" class="gameButton">Nouvelle Partie</button>
         <button id="homeBtn" class="gameButton">Retour à l'île</button>
     </div>
-    <!-- END_SYNC_MARKER: game_controls -->
 
-    <!-- SYNC_MARKER: firebase_import -->
     <!-- Import Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
-    <!-- END_SYNC_MARKER: firebase_import -->
 
-    <!-- SYNC_MARKER: game_script -->
     <script>
         // Configuration du jeu
         const GRID_SIZE = 15;
@@ -1132,10 +1121,8 @@
                 }
             }
         }
-        
-        // SYNC_MARKER: game_functions
-        // Créer une nouvelle partie multijoueur
-        function createGame() {
+// Créer une nouvelle partie multijoueur
+function createGame() {
             // Générer un code de salle si non spécifié
             const roomId = roomInput.value || generateId();
             roomInput.value = roomId;
@@ -1331,9 +1318,7 @@
             // Rediriger vers la page d'accueil
             window.location.href = 'index.html';
         }
-        // END_SYNC_MARKER: game_functions
 
-        // SYNC_MARKER: event_listeners
         // Gérer les entrées clavier
         window.addEventListener('keydown', (e) => {
             gameState.keys[e.key] = true;
@@ -1361,9 +1346,7 @@
         document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
         document.getElementById('restartBtn').addEventListener('click', restartGame);
         document.getElementById('homeBtn').addEventListener('click', returnToHome);
-        // END_SYNC_MARKER: event_listeners
 
-        // SYNC_MARKER: game_loop
         // Boucle de jeu principale
         function gameLoop() {
             update();
@@ -1373,8 +1356,6 @@
 
         // Démarrer le jeu
         gameLoop();
-        // END_SYNC_MARKER: game_loop
     </script>
-    <!-- END_SYNC_MARKER: game_script -->
 </body>
 </html>

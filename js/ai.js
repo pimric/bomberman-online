@@ -1,11 +1,10 @@
-// SYNC_MARKER: ai_variables
+// Logique d'intelligence artificielle améliorée
+
 // Variables de l'IA
 let aiMode = false;
 let aiPlayerId = 'playerAI';
 let aiMoveInterval;
-// END_SYNC_MARKER: ai_variables
 
-// SYNC_MARKER: start_ai
 // Démarrer l'IA
 function startAI() {
     if (aiMoveInterval) clearInterval(aiMoveInterval);
@@ -28,9 +27,7 @@ function startAI() {
         }
     }, AI_MOVE_DELAY);
 }
-// END_SYNC_MARKER: start_ai
 
-// SYNC_MARKER: ai_move_function
 // Déplacer l'IA - version améliorée
 function moveAI(aiPlayer) {
     // Obtenir la position actuelle de l'IA sur la grille
@@ -203,9 +200,7 @@ function moveAI(aiPlayer) {
         });
     }
 }
-// END_SYNC_MARKER: ai_move_function
 
-// SYNC_MARKER: place_ai_bomb
 // L'IA place une bombe
 function placeAIBomb(aiPlayer) {
     // Obtenir la position de la grille
@@ -261,4 +256,3 @@ function placeAIBomb(aiPlayer) {
         }
     }
 }
-// END_SYNC_MARKER: place_ai_bomb

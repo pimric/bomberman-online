@@ -1,4 +1,39 @@
-// SYNC_MARKER: map_generation
+function update() {
+    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+
+    if (checkGameOver()) return;
+
+    const player = gameState.players[gameState.playerId];
+    if (!player || !player.alive) return;
+
+    if (gameState.isMoving[gameState.playerId] === undefined) {
+        gameState.isMoving[gameState.playerId] = false;
+        gameState.playerDirection[gameState.playerId] = null;
+    }
+
+    let direction = null;
+
+    if (gameState.playerId === 'player1') {
+        if (gameState.keys['z']) direction = 'up';
+        else if (gameState.keys['s']) direction = 'down';
+        else if (gameState.keys['q']) direction = 'left';
+        else if (gameState.keys['d']) direction = 'right';
+    } else {
+        if (gameState.keys['ArrowUp']) direction = 'up';
+        else if (gameState.keys['ArrowDown']) direction = 'down';
+        else if (gameState.keys['ArrowLeft']) direction = 'left';
+        else if (gameState.keys['ArrowRight']) direction = 'right';
+    }
+
+    if (direction) {
+        updatePlayerPosition(player, direction, gameState.playerId);
+    } else {
+        gameState.playerDirection[gameState.playerId] = null;
+    }
+
+    updateExplosions();
+}// Fonctions principales du jeu
+
 // Générer une carte aléatoire avec des chemins garantis
 function generateMap() {
     const map = [];
@@ -46,21 +81,23 @@ function generateMap() {
     }
     
     // Garantir un chemin entre le coin supérieur gauche et le coin inférieur droit
+    // en utilisant un algorithme simple qui crée un chemin en zigzag
+    
     // Chemin horizontal
     for (let x = 2; x < GRID_SIZE - 2; x += 2) {
+        // Si c'est un indice pair, on s'assure qu'il y a un passage horizontal
         map[1][x] = TILE_TYPES.EMPTY;
     }
     
     // Chemin vertical
     for (let y = 3; y < GRID_SIZE - 1; y += 2) {
+        // On s'assure qu'il y a un passage vertical
         map[y][GRID_SIZE - 2] = TILE_TYPES.EMPTY;
     }
     
     return map;
 }
-// END_SYNC_MARKER: map_generation
 
-// SYNC_MARKER: player_creation
 // Créer un joueur
 function createPlayer(x, y, color) {
     return {
@@ -78,9 +115,7 @@ function createPlayer(x, y, color) {
 function generateId() {
     return Math.random().toString(36).substr(2, 9);
 }
-// END_SYNC_MARKER: player_creation
 
-// SYNC_MARKER: position_validation
 // Vérification de position améliorée
 function isValidPosition(x, y) {
     const gridX = Math.floor(x / TILE_SIZE);
@@ -92,6 +127,7 @@ function isValidPosition(x, y) {
     }
     
     // Vérifier en tenant compte d'une "hitbox" légèrement plus petite que le joueur
+    // pour éviter de "coller" aux murs
     const margin = 2; // Marge en pixels
     
     // Vérifier les quatre coins du joueur avec la marge
@@ -119,31 +155,156 @@ function isValidPosition(x, y) {
 }
 
 // Mettre à jour la position du joueur avec une meilleure gestion des collisions
-function updatePlayerPosition(playerData, dx, dy) {
-    // Essayer de bouger sur les deux axes indépendamment
-    const newX = playerData.x + dx;
-    const newY = playerData.y + dy;
-    
-    // Essayer d'abord le mouvement complet
-    if (isValidPosition(newX, newY)) {
-        playerData.x = newX;
-        playerData.y = newY;
+function updatePlayerPosition(playerData, direction, playerId) {
+    if (gameState.isMoving[playerId]) {
+        gameState.playerDirection[playerId] = direction;
         return;
     }
-    
-    // Si le mouvement complet échoue, essayer juste horizontalement
-    if (dx !== 0 && isValidPosition(newX, playerData.y)) {
-        playerData.x = newX;
+
+    const gridX = Math.floor(playerData.x / TILE_SIZE);
+    const gridY = Math.floor(playerData.y / TILE_SIZE);
+    const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
+    const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
+
+    if (Math.abs(playerData.x - centerX) > 2 || Math.abs(playerData.y - centerY) > 2) {
+        playerData.x = centerX;
+        playerData.y = centerY;
+        return;
     }
-    
-    // Puis essayer juste verticalement
-    if (dy !== 0 && isValidPosition(playerData.x, newY)) {
-        playerData.y = newY;
+
+    let newX = gridX;
+    let newY = gridY;
+
+    if (direction === 'up') newY--;
+    else if (direction === 'down') newY++;
+    else if (direction === 'left') newX--;
+    else if (direction === 'right') newX++;
+
+    if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE &&
+        gameState.map[newY][newX] === TILE_TYPES.EMPTY) {
+        
+        gameState.isMoving[playerId] = true;
+        gameState.playerDirection[playerId] = direction;
+
+        const startTime = Date.now();
+        const startX = playerData.x;
+        const startY = playerData.y;
+        const targetX = newX * TILE_SIZE + TILE_SIZE / 2;
+        const targetY = newY * TILE_SIZE + TILE_SIZE / 2;
+        const duration = 150;
+
+        function animateMove() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(1, elapsed / duration);
+
+            playerData.x = startX + (targetX - startX) * progress;
+            playerData.y = startY + (targetY - startY) * progress;
+
+            database.ref(`games/${gameState.roomId}/players/${playerId}`).update({
+                x: playerData.x,
+                y: playerData.y
+            });
+
+            if (progress < 1) {
+                requestAnimationFrame(animateMove);
+            } else {
+                gameState.isMoving[playerId] = false;
+
+                if (gameState.playerDirection[playerId]) {
+                    updatePlayerPosition(playerData, gameState.playerDirection[playerId], playerId);
+                }
+            }
+        }
+
+        animateMove();
     }
 }
-// END_SYNC_MARKER: position_validation
 
-// SYNC_MARKER: game_over_check
+// Déplacer l'IA
+function moveAI(aiPlayer) {
+    if (gameState.isMoving[aiPlayerId] === undefined) {
+        gameState.isMoving[aiPlayerId] = false;
+        gameState.playerDirection[aiPlayerId] = null;
+    }
+
+    if (gameState.isMoving[aiPlayerId]) return;
+
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
+    const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
+
+    if (Math.abs(aiPlayer.x - centerX) > 2 || Math.abs(aiPlayer.y - centerY) > 2) {
+        aiPlayer.x = centerX;
+        aiPlayer.y = centerY;
+
+        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+            x: aiPlayer.x,
+            y: aiPlayer.y
+        });
+
+        return;
+    }
+
+    const directions = [
+        { dx: 0, dy: -1, name: 'up' },
+        { dx: 0, dy: 1, name: 'down' },
+        { dx: -1, dy: 0, name: 'left' },
+        { dx: 1, dy: 0, name: 'right' }
+    ];
+
+    const validDirections = directions.filter(dir => {
+        const newX = gridX + dir.dx;
+        const newY = gridY + dir.dy;
+
+        return newX >= 0 && newX < GRID_SIZE && 
+               newY >= 0 && newY < GRID_SIZE && 
+               gameState.map[newY][newX] === TILE_TYPES.EMPTY;
+    });
+
+    if (validDirections.length === 0) {
+        if (Math.random() < 0.5) {
+            placeAIBomb(aiPlayer);
+        }
+        return;
+    }
+
+    let chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+
+    const newX = gridX + chosenDirection.dx;
+    const newY = gridY + chosenDirection.dy;
+
+    gameState.isMoving[aiPlayerId] = true;
+
+    const startTime = Date.now();
+    const startX = aiPlayer.x;
+    const startY = aiPlayer.y;
+    const targetX = newX * TILE_SIZE + TILE_SIZE / 2;
+    const targetY = newY * TILE_SIZE + TILE_SIZE / 2;
+    const duration = 200;
+
+    function animateAIMove() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(1, elapsed / duration);
+
+        aiPlayer.x = startX + (targetX - startX) * progress;
+        aiPlayer.y = startY + (targetY - startY) * progress;
+
+        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+            x: aiPlayer.x,
+            y: aiPlayer.y
+        });
+
+        if (progress < 1) {
+            requestAnimationFrame(animateAIMove);
+        } else {
+            gameState.isMoving[aiPlayerId] = false;
+        }
+    }
+
+    animateAIMove();
+}
+
 // Vérifier fin de partie
 function checkGameOver() {
     if (!gameState.gameStarted) return false;
@@ -156,7 +317,7 @@ function checkGameOver() {
         // Si le joueur est mort
         if (player && !player.alive) {
             if (aiMoveInterval) clearInterval(aiMoveInterval);
-            gameInfo.textContent = `Game Over - Le pirate a gagné !`;
+            gameInfo.textContent = `Game Over - Vous avez perdu !`;
             document.getElementById('gameControls').style.display = 'block';
             return true;
         }
@@ -164,7 +325,7 @@ function checkGameOver() {
         // Si l'IA est morte
         if (ai && !ai.alive) {
             if (aiMoveInterval) clearInterval(aiMoveInterval);
-            gameInfo.textContent = `Victoire - Vous avez battu le pirate !`;
+            gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
             document.getElementById('gameControls').style.display = 'block';
             return true;
         }
@@ -178,7 +339,7 @@ function checkGameOver() {
         if (player1 && player2) {
             if (!player1.alive) {
                 gameInfo.textContent = gameState.playerId === 'player1' ? 
-                    `Game Over - Le Surfeur Bleu a gagné !` : 
+                    `Game Over - Vous avez perdu !` : 
                     `Victoire - Vous avez gagné !`;
                 document.getElementById('gameControls').style.display = 'block';
                 return true;
@@ -186,7 +347,7 @@ function checkGameOver() {
             
             if (!player2.alive) {
                 gameInfo.textContent = gameState.playerId === 'player2' ? 
-                    `Game Over - Le Rasta Rouge a gagné !` : 
+                    `Game Over - Vous avez perdu !` : 
                     `Victoire - Vous avez gagné !`;
                 document.getElementById('gameControls').style.display = 'block';
                 return true;
@@ -196,53 +357,7 @@ function checkGameOver() {
     
     return false;
 }
-// END_SYNC_MARKER: game_over_check
 
-// SYNC_MARKER: update_function
-// Mettre à jour l'état du jeu
-function update() {
-    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
-    
-    // Vérifier si le jeu est terminé
-    if (checkGameOver()) return;
-    
-    const player = gameState.players[gameState.playerId];
-    if (!player || !player.alive) return;
-    
-    let playerMoved = false;
-    
-    // Les deux joueurs utilisent les flèches directionnelles
-    if (gameState.keys['ArrowUp']) {
-        updatePlayerPosition(player, 0, -PLAYER_SPEED);
-        playerMoved = true;
-    }
-    if (gameState.keys['ArrowDown']) {
-        updatePlayerPosition(player, 0, PLAYER_SPEED);
-        playerMoved = true;
-    }
-    if (gameState.keys['ArrowLeft']) {
-        updatePlayerPosition(player, -PLAYER_SPEED, 0);
-        playerMoved = true;
-    }
-    if (gameState.keys['ArrowRight']) {
-        updatePlayerPosition(player, PLAYER_SPEED, 0);
-        playerMoved = true;
-    }
-    
-    // Mettre à jour la position sur Firebase si le joueur a bougé
-    if (playerMoved) {
-        database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
-            x: player.x,
-            y: player.y
-        });
-    }
-    
-    // Mettre à jour les explosions
-    updateExplosions();
-}
-// END_SYNC_MARKER: update_function
-
-// SYNC_MARKER: render_function
 // Dessiner le jeu
 function render() {
     // Effacer le canvas
@@ -268,10 +383,10 @@ function render() {
             
             // Couleur selon le type de case
             if (tileType === TILE_TYPES.WALL) {
-                // Mur solide (style palmier)
+                // Mur solide (style palmier/rocher)
                 ctx.fillStyle = '#006633';
             } else if (tileType === TILE_TYPES.BRICK) {
-                // Briques destructibles (tonneaux)
+                // Briques destructibles (tonneaux/caisses)
                 ctx.fillStyle = '#993300';
             } else {
                 // Cases vides (sable)
@@ -349,9 +464,7 @@ function render() {
         }
     }
 }
-// END_SYNC_MARKER: render_function
 
-// SYNC_MARKER: event_listeners
 // Gérer les entrées clavier
 window.addEventListener('keydown', (e) => {
     gameState.keys[e.key] = true;
@@ -372,9 +485,7 @@ window.addEventListener('beforeunload', () => {
         clearInterval(aiMoveInterval);
     }
 });
-// END_SYNC_MARKER: event_listeners
 
-// SYNC_MARKER: game_loop
 // Boucle de jeu principale
 function gameLoop() {
     update();
@@ -384,4 +495,3 @@ function gameLoop() {
 
 // Démarrer le jeu
 gameLoop();
-// END_SYNC_MARKER: game_loop
