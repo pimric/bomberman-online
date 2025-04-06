@@ -97,17 +97,49 @@ function explodeBomb(bomb) {
     // Supprimer la bombe de Firebase
     database.ref(`games/${gameState.roomId}/bombs/${bomb.id}`).remove();
     
-    // Utiliser les fonctions centralisées pour vérifier les collisions
+    // Vérifier si des joueurs sont touchés par l'explosion
     checkPlayersInExplosion(explosionCells);
+    
+    // Vérifier si d'autres bombes sont touchées par l'explosion (réaction en chaîne)
     checkBombsInExplosion(explosionCells, bomb.id);
 }
 // END_SYNC_MARKER: explode_bomb
 
 // SYNC_MARKER: check_players
-// Ces fonctions sont maintenant définies dans engine.js
-// Pour maintenir la compatibilité, nous gardons le marqueur mais référençons
-// Les fonctions centralisées
-// Voir engine.js:core_collision pour l'implémentation
+// Vérifier si des joueurs sont touchés par l'explosion
+function checkPlayersInExplosion(explosionCells) {
+    for (const playerId in gameState.players) {
+        const player = gameState.players[playerId];
+        if (!player || !player.alive) continue;
+        
+        // Obtenir la position du joueur sur la grille
+        const playerGridX = Math.floor(player.x / TILE_SIZE);
+        const playerGridY = Math.floor(player.y / TILE_SIZE);
+        
+        // Vérifier si le joueur est dans une cellule touchée par l'explosion
+        const isHit = explosionCells.some(cell => cell.x === playerGridX && cell.y === playerGridY);
+        
+        if (isHit) {
+            // Marquer le joueur comme mort
+            database.ref(`games/${gameState.roomId}/players/${playerId}/alive`).set(false);
+        }
+    }
+}
+
+// Vérifier si d'autres bombes sont touchées par l'explosion
+function checkBombsInExplosion(explosionCells, excludeBombId) {
+    for (const bomb of gameState.bombs) {
+        if (bomb.id === excludeBombId) continue;
+        
+        // Vérifier si la bombe est dans une cellule touchée par l'explosion
+        const isHit = explosionCells.some(cell => cell.x === bomb.x && cell.y === bomb.y);
+        
+        if (isHit) {
+            // Exploser cette bombe immédiatement (réaction en chaîne)
+            explodeBomb(bomb);
+        }
+    }
+}
 // END_SYNC_MARKER: check_players
 
 // SYNC_MARKER: update_explosions
