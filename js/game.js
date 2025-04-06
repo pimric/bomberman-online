@@ -1,38 +1,4 @@
-function update() {
-    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
-
-    if (checkGameOver()) return;
-
-    const player = gameState.players[gameState.playerId];
-    if (!player || !player.alive) return;
-
-    if (gameState.isMoving[gameState.playerId] === undefined) {
-        gameState.isMoving[gameState.playerId] = false;
-        gameState.playerDirection[gameState.playerId] = null;
-    }
-
-    let direction = null;
-
-    if (gameState.playerId === 'player1') {
-        if (gameState.keys['z']) direction = 'up';
-        else if (gameState.keys['s']) direction = 'down';
-        else if (gameState.keys['q']) direction = 'left';
-        else if (gameState.keys['d']) direction = 'right';
-    } else {
-        if (gameState.keys['ArrowUp']) direction = 'up';
-        else if (gameState.keys['ArrowDown']) direction = 'down';
-        else if (gameState.keys['ArrowLeft']) direction = 'left';
-        else if (gameState.keys['ArrowRight']) direction = 'right';
-    }
-
-    if (direction) {
-        updatePlayerPosition(player, direction, gameState.playerId);
-    } else {
-        gameState.playerDirection[gameState.playerId] = null;
-    }
-
-    updateExplosions();
-}// Fonctions principales du jeu
+// Fonctions principales du jeu
 
 // Générer une carte aléatoire avec des chemins garantis
 function generateMap() {
@@ -155,154 +121,27 @@ function isValidPosition(x, y) {
 }
 
 // Mettre à jour la position du joueur avec une meilleure gestion des collisions
-function updatePlayerPosition(playerData, direction, playerId) {
-    if (gameState.isMoving[playerId]) {
-        gameState.playerDirection[playerId] = direction;
+function updatePlayerPosition(playerData, dx, dy) {
+    // Essayer de bouger sur les deux axes indépendamment
+    const newX = playerData.x + dx;
+    const newY = playerData.y + dy;
+    
+    // Essayer d'abord le mouvement complet
+    if (isValidPosition(newX, newY)) {
+        playerData.x = newX;
+        playerData.y = newY;
         return;
     }
-
-    const gridX = Math.floor(playerData.x / TILE_SIZE);
-    const gridY = Math.floor(playerData.y / TILE_SIZE);
-    const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
-    const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
-
-    if (Math.abs(playerData.x - centerX) > 2 || Math.abs(playerData.y - centerY) > 2) {
-        playerData.x = centerX;
-        playerData.y = centerY;
-        return;
+    
+    // Si le mouvement complet échoue, essayer juste horizontalement
+    if (dx !== 0 && isValidPosition(newX, playerData.y)) {
+        playerData.x = newX;
     }
-
-    let newX = gridX;
-    let newY = gridY;
-
-    if (direction === 'up') newY--;
-    else if (direction === 'down') newY++;
-    else if (direction === 'left') newX--;
-    else if (direction === 'right') newX++;
-
-    if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE &&
-        gameState.map[newY][newX] === TILE_TYPES.EMPTY) {
-        
-        gameState.isMoving[playerId] = true;
-        gameState.playerDirection[playerId] = direction;
-
-        const startTime = Date.now();
-        const startX = playerData.x;
-        const startY = playerData.y;
-        const targetX = newX * TILE_SIZE + TILE_SIZE / 2;
-        const targetY = newY * TILE_SIZE + TILE_SIZE / 2;
-        const duration = 150;
-
-        function animateMove() {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(1, elapsed / duration);
-
-            playerData.x = startX + (targetX - startX) * progress;
-            playerData.y = startY + (targetY - startY) * progress;
-
-            database.ref(`games/${gameState.roomId}/players/${playerId}`).update({
-                x: playerData.x,
-                y: playerData.y
-            });
-
-            if (progress < 1) {
-                requestAnimationFrame(animateMove);
-            } else {
-                gameState.isMoving[playerId] = false;
-
-                if (gameState.playerDirection[playerId]) {
-                    updatePlayerPosition(playerData, gameState.playerDirection[playerId], playerId);
-                }
-            }
-        }
-
-        animateMove();
+    
+    // Puis essayer juste verticalement
+    if (dy !== 0 && isValidPosition(playerData.x, newY)) {
+        playerData.y = newY;
     }
-}
-
-// Déplacer l'IA
-function moveAI(aiPlayer) {
-    if (gameState.isMoving[aiPlayerId] === undefined) {
-        gameState.isMoving[aiPlayerId] = false;
-        gameState.playerDirection[aiPlayerId] = null;
-    }
-
-    if (gameState.isMoving[aiPlayerId]) return;
-
-    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
-    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
-    const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
-    const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
-
-    if (Math.abs(aiPlayer.x - centerX) > 2 || Math.abs(aiPlayer.y - centerY) > 2) {
-        aiPlayer.x = centerX;
-        aiPlayer.y = centerY;
-
-        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-            x: aiPlayer.x,
-            y: aiPlayer.y
-        });
-
-        return;
-    }
-
-    const directions = [
-        { dx: 0, dy: -1, name: 'up' },
-        { dx: 0, dy: 1, name: 'down' },
-        { dx: -1, dy: 0, name: 'left' },
-        { dx: 1, dy: 0, name: 'right' }
-    ];
-
-    const validDirections = directions.filter(dir => {
-        const newX = gridX + dir.dx;
-        const newY = gridY + dir.dy;
-
-        return newX >= 0 && newX < GRID_SIZE && 
-               newY >= 0 && newY < GRID_SIZE && 
-               gameState.map[newY][newX] === TILE_TYPES.EMPTY;
-    });
-
-    if (validDirections.length === 0) {
-        if (Math.random() < 0.5) {
-            placeAIBomb(aiPlayer);
-        }
-        return;
-    }
-
-    let chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
-
-    const newX = gridX + chosenDirection.dx;
-    const newY = gridY + chosenDirection.dy;
-
-    gameState.isMoving[aiPlayerId] = true;
-
-    const startTime = Date.now();
-    const startX = aiPlayer.x;
-    const startY = aiPlayer.y;
-    const targetX = newX * TILE_SIZE + TILE_SIZE / 2;
-    const targetY = newY * TILE_SIZE + TILE_SIZE / 2;
-    const duration = 200;
-
-    function animateAIMove() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(1, elapsed / duration);
-
-        aiPlayer.x = startX + (targetX - startX) * progress;
-        aiPlayer.y = startY + (targetY - startY) * progress;
-
-        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-            x: aiPlayer.x,
-            y: aiPlayer.y
-        });
-
-        if (progress < 1) {
-            requestAnimationFrame(animateAIMove);
-        } else {
-            gameState.isMoving[aiPlayerId] = false;
-        }
-    }
-
-    animateAIMove();
 }
 
 // Vérifier fin de partie
@@ -356,6 +195,69 @@ function checkGameOver() {
     }
     
     return false;
+}
+
+// Mettre à jour l'état du jeu
+function update() {
+    if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+    
+    // Vérifier si le jeu est terminé
+    if (checkGameOver()) return;
+    
+    const player = gameState.players[gameState.playerId];
+    if (!player || !player.alive) return;
+    
+    let playerMoved = false;
+    
+    // Mouvement selon le joueur
+    if (gameState.playerId === 'player1') {
+        // Joueur 1 (ZQSD)
+        if (gameState.keys['z']) {
+            updatePlayerPosition(player, 0, -PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['s']) {
+            updatePlayerPosition(player, 0, PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['q']) {
+            updatePlayerPosition(player, -PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+        if (gameState.keys['d']) {
+            updatePlayerPosition(player, PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+    } else {
+        // Joueur 2 (Flèches)
+        if (gameState.keys['ArrowUp']) {
+            updatePlayerPosition(player, 0, -PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['ArrowDown']) {
+            updatePlayerPosition(player, 0, PLAYER_SPEED);
+            playerMoved = true;
+        }
+        if (gameState.keys['ArrowLeft']) {
+            updatePlayerPosition(player, -PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+        if (gameState.keys['ArrowRight']) {
+            updatePlayerPosition(player, PLAYER_SPEED, 0);
+            playerMoved = true;
+        }
+    }
+    
+    // Mettre à jour la position sur Firebase si le joueur a bougé
+    if (playerMoved) {
+        database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
+            x: player.x,
+            y: player.y
+        });
+    }
+    
+    // Mettre à jour les explosions
+    updateExplosions();
 }
 
 // Dessiner le jeu
