@@ -173,6 +173,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
 
     <script>
+        // Ajout d'un système de journalisation simple
+        function log(message) {
+            console.log(`[${new Date().toISOString()}] ${message}`);
+        }
+
+        log("Script démarré");
+
         // Configuration du jeu
         const GRID_SIZE = 15;
         const TILE_SIZE = 32;
@@ -203,6 +210,7 @@
         };
 
         // Initialiser Firebase avec vos identifiants
+        log("Initialisation de Firebase");
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
@@ -219,13 +227,11 @@
         };
 
         // Références DOM
+        log("Récupération des références DOM");
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const gameInfo = document.getElementById('gameInfo');
         const roomInput = document.getElementById('roomInput');
-        const createBtn = document.getElementById('createBtn');
-        const joinBtn = document.getElementById('joinBtn');
-        const singlePlayerBtn = document.getElementById('singlePlayerBtn');
 
         // Variables de l'IA
         let aiMode = false;
@@ -436,43 +442,22 @@
             
             let playerMoved = false;
             
-            // Mouvement selon le joueur
-            if (gameState.playerId === 'player1') {
-                // Joueur 1 (ZQSD)
-                if (gameState.keys['z']) {
-                    updatePlayerPosition(player, 0, -PLAYER_SPEED);
-                    playerMoved = true;
-                }
-                if (gameState.keys['s']) {
-                    updatePlayerPosition(player, 0, PLAYER_SPEED);
-                    playerMoved = true;
-                }
-                if (gameState.keys['q']) {
-                    updatePlayerPosition(player, -PLAYER_SPEED, 0);
-                    playerMoved = true;
-                }
-                if (gameState.keys['d']) {
-                    updatePlayerPosition(player, PLAYER_SPEED, 0);
-                    playerMoved = true;
-                }
-            } else {
-                // Joueur 2 (Flèches)
-                if (gameState.keys['ArrowUp']) {
-                    updatePlayerPosition(player, 0, -PLAYER_SPEED);
-                    playerMoved = true;
-                }
-                if (gameState.keys['ArrowDown']) {
-                    updatePlayerPosition(player, 0, PLAYER_SPEED);
-                    playerMoved = true;
-                }
-                if (gameState.keys['ArrowLeft']) {
-                    updatePlayerPosition(player, -PLAYER_SPEED, 0);
-                    playerMoved = true;
-                }
-                if (gameState.keys['ArrowRight']) {
-                    updatePlayerPosition(player, PLAYER_SPEED, 0);
-                    playerMoved = true;
-                }
+            // Mouvement pour tous les joueurs
+            if (gameState.keys['ArrowUp']) {
+                updatePlayerPosition(player, 0, -PLAYER_SPEED);
+                playerMoved = true;
+            }
+            if (gameState.keys['ArrowDown']) {
+                updatePlayerPosition(player, 0, PLAYER_SPEED);
+                playerMoved = true;
+            }
+            if (gameState.keys['ArrowLeft']) {
+                updatePlayerPosition(player, -PLAYER_SPEED, 0);
+                playerMoved = true;
+            }
+            if (gameState.keys['ArrowRight']) {
+                updatePlayerPosition(player, PLAYER_SPEED, 0);
+                playerMoved = true;
             }
             
             // Mettre à jour la position sur Firebase si le joueur a bougé
@@ -938,7 +923,9 @@
             database.ref(`games/${gameState.roomId}/explosions`).push(explosion);
             
             // Supprimer la bombe de Firebase
-            database.ref(`games/${gameState.roomId}/bombs`).remove();
+            if (bomb.id) {
+                database.ref(`games/${gameState.roomId}/bombs/${bomb.id}`).remove();
+            }
             
             // Vérifier si des joueurs sont touchés par l'explosion
             checkPlayersInExplosion(explosionCells);
@@ -996,7 +983,9 @@
             // Supprimer les explosions terminées
             for (const explosion of gameState.explosions) {
                 if (explosion.timestamp + explosion.duration <= currentTime) {
-                    database.ref(`games/${gameState.roomId}/explosions/${explosion.id}`).remove();
+                    if (explosion.id) {
+                        database.ref(`games/${gameState.roomId}/explosions/${explosion.id}`).remove();
+                    }
                 }
             }
         }
@@ -1083,46 +1072,52 @@
                 // Dessiner chaque cellule de l'explosion
                 for (const cell of explosion.cells) {
                     // Utiliser un dégradé pour l'effet d'explosion tropicale
-                    const gradient = ctx.createRadialGradient(
-                        cell.x * TILE_SIZE + TILE_SIZE/2,
-                        cell.y * TILE_SIZE + TILE_SIZE/2,
-                        0,
-                        cell.x * TILE_SIZE + TILE_SIZE/2,
-                        cell.y * TILE_SIZE + TILE_SIZE/2,
-                        TILE_SIZE/2
-                    );
-                    
-                    // Couleurs chaudes pour une explosion tropicale - jaune, orange, rouge
-                    gradient.addColorStop(0, `rgba(255, 255, 0, ${opacity})`);
-                    gradient.addColorStop(0.6, `rgba(255, 165, 0, ${opacity * 0.9})`);
-                    gradient.addColorStop(1, `rgba(255, 69, 0, ${opacity * 0.7})`);
-                    
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(
-                        cell.x * TILE_SIZE, 
-                        cell.y * TILE_SIZE, 
-                        TILE_SIZE, 
-                        TILE_SIZE
-                    );
-                    
-                    // Ajouter des particules façon "confettis" pour effet reggae
-                    if (Math.random() < 0.4) {
-                        const particleColors = ['#00FF00', '#FFFF00', '#FF0000']; // Vert, jaune, rouge (couleurs reggae)
-                        const color = particleColors[Math.floor(Math.random() * particleColors.length)];
-                        
-                        ctx.fillStyle = color;
-                        ctx.fillRect(
-                            cell.x * TILE_SIZE + Math.random() * TILE_SIZE, 
-                            cell.y * TILE_SIZE + Math.random() * TILE_SIZE, 
-                            3, 
-                            3
+                    try {
+                        const gradient = ctx.createRadialGradient(
+                            cell.x * TILE_SIZE + TILE_SIZE/2,
+                            cell.y * TILE_SIZE + TILE_SIZE/2,
+                            0,
+                            cell.x * TILE_SIZE + TILE_SIZE/2,
+                            cell.y * TILE_SIZE + TILE_SIZE/2,
+                            TILE_SIZE/2
                         );
+                        
+                        // Couleurs chaudes pour une explosion tropicale - jaune, orange, rouge
+                        gradient.addColorStop(0, `rgba(255, 255, 0, ${opacity})`);
+                        gradient.addColorStop(0.6, `rgba(255, 165, 0, ${opacity * 0.9})`);
+                        gradient.addColorStop(1, `rgba(255, 69, 0, ${opacity * 0.7})`);
+                        
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(
+                            cell.x * TILE_SIZE, 
+                            cell.y * TILE_SIZE, 
+                            TILE_SIZE, 
+                            TILE_SIZE
+                        );
+                        
+                        // Ajouter des particules façon "confettis" pour effet reggae
+                        if (Math.random() < 0.4) {
+                            const particleColors = ['#00FF00', '#FFFF00', '#FF0000']; // Vert, jaune, rouge (couleurs reggae)
+                            const color = particleColors[Math.floor(Math.random() * particleColors.length)];
+                            
+                            ctx.fillStyle = color;
+                            ctx.fillRect(
+                                cell.x * TILE_SIZE + Math.random() * TILE_SIZE, 
+                                cell.y * TILE_SIZE + Math.random() * TILE_SIZE, 
+                                3, 
+                                3
+                            );
+                        }
+                    } catch (e) {
+                        console.error("Erreur lors du rendu d'explosion:", e);
                     }
                 }
             }
         }
-// Créer une nouvelle partie multijoueur
-function createGame() {
+
+        // Créer une nouvelle partie multijoueur
+        function createGame() {
+            log("Création d'une nouvelle partie multijoueur");
             // Générer un code de salle si non spécifié
             const roomId = roomInput.value || generateId();
             roomInput.value = roomId;
@@ -1149,6 +1144,7 @@ function createGame() {
 
         // Rejoindre une partie existante
         function joinExistingGame() {
+            log("Tentative de rejoindre une partie existante");
             const roomId = roomInput.value;
             if (!roomId) {
                 alert('Veuillez entrer un code de partie');
@@ -1186,6 +1182,7 @@ function createGame() {
 
         // Créer une partie solo contre l'IA
         function createSinglePlayerGame() {
+            log("Création d'une partie solo contre l'IA");
             // Générer un code de salle pour le mode solo
             const roomId = 'solo_' + generateId();
             roomInput.value = roomId;
@@ -1216,6 +1213,7 @@ function createGame() {
 
         // Rejoindre une partie et configurer les écouteurs
         function joinGame(roomId, playerId) {
+            log(`Rejoindre la partie ${roomId} en tant que ${playerId}`);
             const gameRef = database.ref(`games/${roomId}`);
             
             // Écouter les changements d'état du jeu
@@ -1259,6 +1257,7 @@ function createGame() {
 
         // Fonction pour redémarrer la partie
         function restartGame() {
+            log("Redémarrage de la partie");
             // Si on est en mode solo avec IA
             if (aiMode) {
                 // Nettoyer l'intervalle de l'IA pour éviter les doublons
@@ -1315,6 +1314,7 @@ function createGame() {
 
         // Fonction pour revenir au menu principal
         function returnToHome() {
+            log("Retour à l'accueil");
             // Rediriger vers la page d'accueil
             window.location.href = 'index.html';
         }
@@ -1340,12 +1340,63 @@ function createGame() {
             }
         });
 
-        // Ajout des écouteurs d'événements pour les boutons
-        document.getElementById('createBtn').addEventListener('click', createGame);
-        document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
-        document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
-        document.getElementById('restartBtn').addEventListener('click', restartGame);
-        document.getElementById('homeBtn').addEventListener('click', returnToHome);
+        // Ajout des écouteurs d'événements pour les boutons avec système de log
+        log("Ajout des écouteurs d'événements pour les boutons");
+        
+        const createBtn = document.getElementById('createBtn');
+        if (createBtn) {
+            createBtn.addEventListener('click', function() {
+                log("Bouton createBtn cliqué");
+                createGame();
+            });
+            log("Écouteur ajouté pour createBtn");
+        } else {
+            console.error("Élément createBtn non trouvé");
+        }
+        
+        const joinBtn = document.getElementById('joinBtn');
+        if (joinBtn) {
+            joinBtn.addEventListener('click', function() {
+                log("Bouton joinBtn cliqué");
+                joinExistingGame();
+            });
+            log("Écouteur ajouté pour joinBtn");
+        } else {
+            console.error("Élément joinBtn non trouvé");
+        }
+        
+        const singlePlayerBtn = document.getElementById('singlePlayerBtn');
+        if (singlePlayerBtn) {
+            singlePlayerBtn.addEventListener('click', function() {
+                log("Bouton singlePlayerBtn cliqué");
+                createSinglePlayerGame();
+            });
+            log("Écouteur ajouté pour singlePlayerBtn");
+        } else {
+            console.error("Élément singlePlayerBtn non trouvé");
+        }
+        
+        const restartBtn = document.getElementById('restartBtn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', function() {
+                log("Bouton restartBtn cliqué");
+                restartGame();
+            });
+            log("Écouteur ajouté pour restartBtn");
+        } else {
+            console.error("Élément restartBtn non trouvé");
+        }
+        
+        const homeBtn = document.getElementById('homeBtn');
+        if (homeBtn) {
+            homeBtn.addEventListener('click', function() {
+                log("Bouton homeBtn cliqué");
+                returnToHome();
+            });
+            log("Écouteur ajouté pour homeBtn");
+        } else {
+            console.error("Élément homeBtn non trouvé");
+        }
 
         // Boucle de jeu principale
         function gameLoop() {
@@ -1355,6 +1406,7 @@ function createGame() {
         }
 
         // Démarrer le jeu
+        log("Démarrage de la boucle de jeu");
         gameLoop();
     </script>
 </body>
