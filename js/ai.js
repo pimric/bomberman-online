@@ -5,12 +5,8 @@ let aiMode = false;
 let aiPlayerId = 'playerAI';
 let aiMoveInterval;
 let aiLastMove = { dx: 0, dy: 0 }; // Mémorise le dernier mouvement pour éviter les aller-retours
-let aiPathfinding = {
-    targetX: null,
-    targetY: null,
-    path: [],
-    lastPathUpdate: 0
-};
+let aiTarget = null; // Cible actuelle de l'IA
+let aiLastTargetUpdate = 0;
 
 // Démarrer l'IA
 function startAI() {
@@ -18,7 +14,6 @@ function startAI() {
     if (aiMoveInterval) clearInterval(aiMoveInterval);
     
     // Donner un délai initial avant que l'IA ne commence à bouger
-    // pour éviter qu'elle ne meure immédiatement
     setTimeout(() => {
         aiMoveInterval = setInterval(() => {
             if (!gameState.gameStarted || !aiMode) return;
@@ -32,685 +27,18 @@ function startAI() {
             // Logique de mouvement de l'IA
             moveAI(aiPlayer);
             
-            // Possibilité de placer une bombe (contrôlée par la stratégie)
-            considerPlacingBomb(aiPlayer);
+            // Considérer de placer une bombe (avec une probabilité modérée)
+            if (Math.random() < 0.15) { // 15% de chance à chaque mise à jour
+                tryPlaceBomb(aiPlayer);
+            }
             
         }, AI_MOVE_DELAY);
-    }, 1000); // Attendre 1 seconde avant le premier mouvement
+    }, 800); // Attendre 800ms avant le premier mouvement
 }
 
-// Fonction pour considérer intelligemment le placement d'une bombe
-function considerPlacingBomb(aiPlayer) {
+// Essayer de placer une bombe intelligemment
+function tryPlaceBomb(aiPlayer) {
     // Obtenir la position actuelle sur la grille
-    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
-    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
-    
-    // Si le joueur est proche, haute probabilité de poser une bombe
-    const player = gameState.players['player1'];
-    if (player && player.alive) {
-        const playerGridX = Math.floor(player.x / TILE_SIZE);
-        const playerGridY = Math.floor(player.y / TILE_SIZE);
-        
-        const distance = Math.abs(gridX - playerGridX) + Math.abs(gridY - playerGridY);
-        
-        // Si le joueur est à 1-2 cases de distance et sur la même ligne/colonne
-        if (distance <= 2 && (gridX === playerGridX || gridY === playerGridY)) {
-            // Haute chance de placer une bombe (80%)
-            if (Math.random() < 0.8) {
-                if (hasEscapeRoute(gridX, gridY)) {
-                    placeAIBomb(aiPlayer);
-                    // Fuir immédiatement
-                    aiPathfinding.targetX = null;
-                    return;
-                }
-            }
-        }
-    }
-    
-    // Si on est à côté d'une brique, probabilité de poser une bombe pour la détruire
-    // Vérifier les 4 directions
-    const directions = [
-        { dx: 0, dy: -1 }, // haut
-        { dx: 1, dy: 0 },  // droite
-        { dx: 0, dy: 1 },  // bas
-        { dx: -1, dy: 0 }  // gauche
-    ];
-    
-    let bricksNearby = false;
-    
-    for (const dir of directions) {
-        const newX = gridX + dir.dx;
-        const newY = gridY + dir.dy;
-        
-        // Vérifier si c'est dans la carte
-        if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
-            // Si c'est une brique
-            if (gameState.map[newY][newX] === TILE_TYPES.BRICK) {
-                bricksNearby = true;
-                break;
-            }
-        }
-    }
-    
-    // S'il y a des briques à proximité et aucune bombe n'est déjà en place
-    if (bricksNearby && !isBombNearby(gridX, gridY, 1)) {
-        // Vérifier qu'on a une route d'échappement
-        if (hasEscapeRoute(gridX, gridY)) {
-            // 30% de chance de poser une bombe
-            if (Math.random() < 0.3) {
-                placeAIBomb(aiPlayer);
-                // Réinitialiser le pathfinding pour s'échapper
-                aiPathfinding.targetX = null;
-            }
-        }
-    }
-}
-
-// Vérifier si l'IA a une route d'échappement avant de poser une bombe
-function hasEscapeRoute(x, y) {
-    // Vérifier les 4 directions
-    const directions = [
-        { dx: 0, dy: -1 }, // haut
-        { dx: 1, dy: 0 },  // droite
-        { dx: 0, dy: 1 },  // bas
-        { dx: -1, dy: 0 }  // gauche
-    ];
-    
-    // Check si au moins une direction est libre
-    for (const dir of directions) {
-        const newX = x + dir.dx;
-        const newY = y + dir.dy;
-        
-        // Si cette case est accessible
-        if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
-            if (gameState.map[newY][newX] === TILE_TYPES.EMPTY && !isBombAt(newX, newY)) {
-                // Et qu'il y a encore une échappatoire depuis cette case
-                const furtherDirections = directions.filter(d => 
-                    !(d.dx === -dir.dx && d.dy === -dir.dy) // Toutes les directions sauf celle d'où on vient
-                );
-                
-                for (const fDir of furtherDirections) {
-                    const furtherX = newX + fDir.dx;
-                    const furtherY = newY + fDir.dy;
-                    
-                    if (furtherX >= 0 && furtherX < GRID_SIZE && furtherY >= 0 && furtherY < GRID_SIZE) {
-                        if (gameState.map[furtherY][furtherX] === TILE_TYPES.EMPTY && !isBombAt(furtherX, furtherY)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    return false;
-}
-
-// Vérifier si une bombe est à une position spécifique
-function isBombAt(x, y) {
-    return gameState.bombs.some(bomb => bomb.x === x && bomb.y === y);
-}
-
-// Vérifier si une bombe est dans un rayon autour d'une position
-function isBombNearby(x, y, radius) {
-    return gameState.bombs.some(bomb => {
-        const distance = Math.abs(bomb.x - x) + Math.abs(bomb.y - y);
-        return distance <= radius;
-    });
-}
-
-// Vérifier si une position est menacée par l'explosion d'une bombe
-function isPositionThreatened(x, y) {
-    // Pour chaque bombe dans le jeu
-    for (const bomb of gameState.bombs) {
-        const bombRange = bomb.range || 1;
-        
-        // Si on est sur la même ligne ou colonne que la bombe
-        if (bomb.x === x || bomb.y === y) {
-            // Calculer la distance
-            const distance = Math.abs(bomb.x - x) + Math.abs(bomb.y - y);
-            
-            // Si on est dans la portée de la bombe
-            if (distance <= bombRange) {
-                // Vérifier s'il y a un mur/brique entre nous et la bombe
-                let blocked = false;
-                
-                // Si même ligne
-                if (bomb.y === y) {
-                    const start = Math.min(bomb.x, x);
-                    const end = Math.max(bomb.x, x);
-                    
-                    for (let i = start + 1; i < end; i++) {
-                        if (gameState.map[y][i] !== TILE_TYPES.EMPTY) {
-                            blocked = true;
-                            break;
-                        }
-                    }
-                }
-                // Si même colonne
-                else if (bomb.x === x) {
-                    const start = Math.min(bomb.y, y);
-                    const end = Math.max(bomb.y, y);
-                    
-                    for (let i = start + 1; i < end; i++) {
-                        if (gameState.map[i][x] !== TILE_TYPES.EMPTY) {
-                            blocked = true;
-                            break;
-                        }
-                    }
-                }
-                
-                // Si rien ne bloque l'explosion, cette position est menacée
-                if (!blocked) {
-                    return true;
-                }
-            }
-        }
-    }
-    
-    return false;
-}
-
-// Trouver une position sûre (loin des bombes)
-function findSafePosition(currentX, currentY) {
-    // Construire une grille de sécurité
-    const safetyGrid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
-    
-    // Marquer les positions dangereuses
-    for (let y = 0; y < GRID_SIZE; y++) {
-        for (let x = 0; x < GRID_SIZE; x++) {
-            // Si c'est un mur ou une brique, ce n'est pas sûr
-            if (gameState.map[y][x] !== TILE_TYPES.EMPTY) {
-                safetyGrid[y][x] = -1;
-                continue;
-            }
-            
-            // Si une bombe est ici, ce n'est pas sûr
-            if (isBombAt(x, y)) {
-                safetyGrid[y][x] = -1;
-                continue;
-            }
-            
-            // Si cette position est menacée par une explosion
-            if (isPositionThreatened(x, y)) {
-                safetyGrid[y][x] = -1;
-                continue;
-            }
-            
-            // Sinon, la sécurité est proportionnelle à la distance avec les bombes
-            // Plus on est loin des bombes, plus c'est sûr
-            let minBombDistance = Infinity;
-            for (const bomb of gameState.bombs) {
-                const distance = Math.abs(bomb.x - x) + Math.abs(bomb.y - y);
-                minBombDistance = Math.min(minBombDistance, distance);
-            }
-            
-            // La valeur de sécurité est la distance minimale aux bombes
-            // (si pas de bombes, c'est très sûr)
-            safetyGrid[y][x] = minBombDistance === Infinity ? 100 : minBombDistance;
-        }
-    }
-    
-    // Trouver la position accessible la plus sûre
-    // (accessible = atteignable depuis la position actuelle)
-    const queue = [];
-    const visited = new Set();
-    const currentGridX = Math.floor(currentX / TILE_SIZE);
-    const currentGridY = Math.floor(currentY / TILE_SIZE);
-    
-    // Si la position actuelle est sûre, on peut y rester
-    if (safetyGrid[currentGridY][currentGridX] > 0) {
-        return { x: currentGridX, y: currentGridY, safety: safetyGrid[currentGridY][currentGridX] };
-    }
-    
-    // Commencer la recherche depuis la position actuelle
-    queue.push({ x: currentGridX, y: currentGridY, path: [] });
-    visited.add(`${currentGridX},${currentGridY}`);
-    
-    while (queue.length > 0) {
-        const { x, y, path } = queue.shift();
-        
-        // Directions possibles
-        const directions = [
-            { dx: 0, dy: -1 }, // haut
-            { dx: 1, dy: 0 },  // droite
-            { dx: 0, dy: 1 },  // bas
-            { dx: -1, dy: 0 }  // gauche
-        ];
-        
-        for (const dir of directions) {
-            const newX = x + dir.dx;
-            const newY = y + dir.dy;
-            const key = `${newX},${newY}`;
-            
-            // Vérifier si cette case est dans les limites et n'a pas été visitée
-            if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE && !visited.has(key)) {
-                visited.add(key);
-                
-                // Si cette case est sûre
-                if (safetyGrid[newY][newX] > 0) {
-                    // Construire le chemin pour y arriver
-                    const newPath = [...path, { x: newX, y: newY }];
-                    
-                    return { 
-                        x: newX, 
-                        y: newY, 
-                        safety: safetyGrid[newY][newX],
-                        path: newPath
-                    };
-                }
-                
-                // Si cette case est accessible (mais pas sûre), continuer la recherche
-                if (safetyGrid[newY][newX] !== -1) {
-                    const newPath = [...path, { x: newX, y: newY }];
-                    queue.push({ x: newX, y: newY, path: newPath });
-                }
-            }
-        }
-    }
-    
-    // Si aucune position sûre n'est trouvée, retourner la position actuelle
-    return { x: currentGridX, y: currentGridY, safety: -1, path: [] };
-}
-
-// Déplacer l'IA - version améliorée
-function moveAI(aiPlayer) {
-    // Obtenir la position actuelle de l'IA sur la grille
-    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
-    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
-    
-    // Vérifier si l'IA est en danger (une bombe est à proximité)
-    let inDanger = false;
-    
-    // Vérifier si la position actuelle est menacée par une explosion
-    if (isPositionThreatened(gridX, gridY) || isBombAt(gridX, gridY)) {
-        inDanger = true;
-    }
-    
-    // S'assurer que l'IA est bien centrée sur sa case actuelle
-    // pour éviter de se bloquer contre les murs
-    const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
-    const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
-    
-    // Si l'IA n'est pas bien centrée, la recentrer d'abord
-    // (sauf si elle est en danger, auquel cas elle doit fuir immédiatement)
-    if (!inDanger && (Math.abs(aiPlayer.x - centerX) > 2 || Math.abs(aiPlayer.y - centerY) > 2)) {
-        const dx = Math.sign(centerX - aiPlayer.x) * Math.min(PLAYER_SPEED, Math.abs(centerX - aiPlayer.x));
-        const dy = Math.sign(centerY - aiPlayer.y) * Math.min(PLAYER_SPEED, Math.abs(centerY - aiPlayer.y));
-        
-        if (dx !== 0) aiPlayer.x += dx;
-        if (dy !== 0) aiPlayer.y += dy;
-        
-        // Synchroniser avec Firebase
-        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-            x: aiPlayer.x,
-            y: aiPlayer.y
-        });
-        
-        return; // Ne pas faire d'autre mouvement pour ce tour
-    }
-    
-    // Si on est en danger, trouver une position sûre
-    if (inDanger) {
-        // Réinitialiser le pathfinding pour trouver une nouvelle route sûre
-        aiPathfinding.targetX = null;
-        aiPathfinding.targetY = null;
-        
-        const safePosition = findSafePosition(aiPlayer.x, aiPlayer.y);
-        
-        // Si on a trouvé une position sûre avec un chemin
-        if (safePosition.safety > 0 && safePosition.path && safePosition.path.length > 0) {
-            // Prendre la première étape du chemin
-            const nextStep = safePosition.path[0];
-            
-            // Calculer la direction vers cette étape
-            const dx = (nextStep.x * TILE_SIZE + TILE_SIZE / 2) - aiPlayer.x;
-            const dy = (nextStep.y * TILE_SIZE + TILE_SIZE / 2) - aiPlayer.y;
-            
-            // Normaliser le mouvement pour maintenir la vitesse constante
-            const length = Math.sqrt(dx * dx + dy * dy);
-            if (length > 0) {
-                const normalizedDx = dx / length * PLAYER_SPEED;
-                const normalizedDy = dy / length * PLAYER_SPEED;
-                
-                // Appliquer le mouvement
-                aiPlayer.x += normalizedDx;
-                aiPlayer.y += normalizedDy;
-                
-                // Mémoriser le dernier mouvement
-                aiLastMove = { dx: normalizedDx, dy: normalizedDy };
-                
-                // Synchroniser avec Firebase
-                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-                    x: aiPlayer.x,
-                    y: aiPlayer.y
-                });
-            }
-            
-            return;
-        }
-    }
-    
-    // Si on n'est pas en danger ou qu'on n'a pas trouvé de position sûre,
-    // on peut soit chercher à casser des briques, soit attaquer le joueur
-    
-    // Mettre à jour le pathfinding si nécessaire (toutes les X secondes)
-    const currentTime = Date.now();
-    if (!aiPathfinding.targetX || currentTime - aiPathfinding.lastPathUpdate > 2000) {
-        // Reset le pathfinding
-        aiPathfinding.path = [];
-        
-        const player = gameState.players['player1'];
-        if (player && player.alive) {
-            const playerGridX = Math.floor(player.x / TILE_SIZE);
-            const playerGridY = Math.floor(player.y / TILE_SIZE);
-            
-            // Déterminer si on va vers le joueur ou vers une brique
-            const distanceToPlayer = Math.abs(gridX - playerGridX) + Math.abs(gridY - playerGridY);
-            
-            // Si le joueur est proche (moins de 5 cases), 70% de chances de le cibler
-            // sinon, 30% de chances de le cibler
-            const targetPlayer = Math.random() < (distanceToPlayer < 5 ? 0.7 : 0.3);
-            
-            if (targetPlayer) {
-                // Cibler le joueur, mais s'arrêter à une distance de 1 case pour poser une bombe
-                const path = findPath(gridX, gridY, playerGridX, playerGridY, true);
-                
-                if (path && path.length > 0) {
-                    aiPathfinding.path = path;
-                    aiPathfinding.targetX = playerGridX;
-                    aiPathfinding.targetY = playerGridY;
-                }
-            } else {
-                // Cibler une brique aléatoire
-                const bricks = [];
-                
-                for (let y = 0; y < GRID_SIZE; y++) {
-                    for (let x = 0; x < GRID_SIZE; x++) {
-                        if (gameState.map[y][x] === TILE_TYPES.BRICK) {
-                            // Calculer la distance
-                            const distance = Math.abs(gridX - x) + Math.abs(gridY - y);
-                            
-                            // Préférer les briques plus proches
-                            if (distance < 10) {
-                                bricks.push({ x, y, distance });
-                            }
-                        }
-                    }
-                }
-                
-                // Trier par distance
-                bricks.sort((a, b) => a.distance - b.distance);
-                
-                // Prendre une brique aléatoire parmi les 5 plus proches
-                if (bricks.length > 0) {
-                    const targetBrick = bricks[Math.min(Math.floor(Math.random() * 5), bricks.length - 1)];
-                    
-                    // Trouver un chemin vers une case adjacente à la brique
-                    const directions = [
-                        { dx: 0, dy: -1 }, // haut
-                        { dx: 1, dy: 0 },  // droite
-                        { dx: 0, dy: 1 },  // bas
-                        { dx: -1, dy: 0 }  // gauche
-                    ];
-                    
-                    // Essayer chaque direction
-                    for (const dir of directions) {
-                        const adjacentX = targetBrick.x + dir.dx;
-                        const adjacentY = targetBrick.y + dir.dy;
-                        
-                        // Vérifier si cette case adjacente est accessible
-                        if (adjacentX >= 0 && adjacentX < GRID_SIZE && 
-                            adjacentY >= 0 && adjacentY < GRID_SIZE && 
-                            gameState.map[adjacentY][adjacentX] === TILE_TYPES.EMPTY) {
-                            
-                            const path = findPath(gridX, gridY, adjacentX, adjacentY, false);
-                            
-                            if (path && path.length > 0) {
-                                aiPathfinding.path = path;
-                                aiPathfinding.targetX = adjacentX;
-                                aiPathfinding.targetY = adjacentY;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            aiPathfinding.lastPathUpdate = currentTime;
-        }
-    }
-    
-    // Si on a un chemin, le suivre
-    if (aiPathfinding.path && aiPathfinding.path.length > 0) {
-        const nextStep = aiPathfinding.path[0];
-        
-        // Si on est arrivé à la destination
-        const currentGridX = Math.floor(aiPlayer.x / TILE_SIZE);
-        const currentGridY = Math.floor(aiPlayer.y / TILE_SIZE);
-        
-        if (currentGridX === nextStep.x && currentGridY === nextStep.y) {
-            // Passer à l'étape suivante
-            aiPathfinding.path.shift();
-            
-            // Si c'était la dernière étape
-            if (aiPathfinding.path.length === 0) {
-                // Si on est arrivé à la destination finale
-                if (currentGridX === aiPathfinding.targetX && currentGridY === aiPathfinding.targetY) {
-                    // On est arrivé, poser une bombe si approprié
-                    considerPlacingBomb(aiPlayer);
-                }
-                
-                // Réinitialiser le pathfinding
-                aiPathfinding.targetX = null;
-                aiPathfinding.targetY = null;
-                return;
-            }
-        }
-        
-        // Continuer à suivre le chemin
-        const nextPoint = aiPathfinding.path[0];
-        
-        // Calculer la direction vers la prochaine étape
-        const targetX = nextPoint.x * TILE_SIZE + TILE_SIZE / 2;
-        const targetY = nextPoint.y * TILE_SIZE + TILE_SIZE / 2;
-        
-        const dx = targetX - aiPlayer.x;
-        const dy = targetY - aiPlayer.y;
-        
-        // Normaliser le mouvement pour maintenir la vitesse constante
-        const length = Math.sqrt(dx * dx + dy * dy);
-        if (length > 0) {
-            const normalizedDx = dx / length * PLAYER_SPEED;
-            const normalizedDy = dy / length * PLAYER_SPEED;
-            
-            // Vérifier si le mouvement est valide
-            const newX = aiPlayer.x + normalizedDx;
-            const newY = aiPlayer.y + normalizedDy;
-            
-            if (isValidPosition(newX, newY)) {
-                // Appliquer le mouvement
-                aiPlayer.x = newX;
-                aiPlayer.y = newY;
-                
-                // Mémoriser le dernier mouvement
-                aiLastMove = { dx: normalizedDx, dy: normalizedDy };
-                
-                // Synchroniser avec Firebase
-                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-                    x: aiPlayer.x,
-                    y: aiPlayer.y
-                });
-            } else {
-                // Si le mouvement est bloqué, réinitialiser le pathfinding
-                aiPathfinding.targetX = null;
-                aiPathfinding.targetY = null;
-                aiPathfinding.path = [];
-            }
-        }
-    } else {
-        // Si on n'a pas de chemin, faire un mouvement aléatoire
-        // Directions possibles: haut, bas, gauche, droite
-        const directions = [
-            { dx: 0, dy: -PLAYER_SPEED, name: 'haut' },
-            { dx: 0, dy: PLAYER_SPEED, name: 'bas' },
-            { dx: -PLAYER_SPEED, dy: 0, name: 'gauche' },
-            { dx: PLAYER_SPEED, dy: 0, name: 'droite' }
-        ];
-        
-        // Filtrer les directions valides (sans obstacle)
-        const validDirections = directions.filter(dir => {
-            // Vérifier la position après le mouvement
-            const newX = aiPlayer.x + dir.dx;
-            const newY = aiPlayer.y + dir.dy;
-            
-            return isValidPosition(newX, newY);
-        });
-        
-        // Favoriser la direction actuelle pour éviter les zigzags
-        const continueStraight = validDirections.find(dir => 
-            (dir.dx === aiLastMove.dx && dir.dy === aiLastMove.dy) && 
-            (dir.dx !== 0 || dir.dy !== 0)
-        );
-        
-        let chosenDirection;
-        
-        if (continueStraight && Math.random() < 0.7) {
-            // 70% de chance de continuer tout droit
-            chosenDirection = continueStraight;
-        } else if (validDirections.length > 0) {
-            // Sinon, direction aléatoire
-            chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
-            
-            // Mémoriser la nouvelle direction
-            aiLastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
-        } else {
-            // Pas de direction valide, rester sur place
-            return;
-        }
-        
-        // Appliquer le mouvement
-        aiPlayer.x += chosenDirection.dx;
-        aiPlayer.y += chosenDirection.dy;
-        
-        // Synchroniser avec Firebase
-        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-            x: aiPlayer.x,
-            y: aiPlayer.y
-        });
-    }
-}
-
-// Trouver un chemin entre deux points (algorithme A*)
-function findPath(startX, startY, endX, endY, stopNextTo) {
-    // Si les points sont identiques, retourner un chemin vide
-    if (startX === endX && startY === endY) {
-        return [];
-    }
-    
-    // Classe pour représenter un nœud dans l'algorithme A*
-    class Node {
-        constructor(x, y, g, h, parent) {
-            this.x = x;
-            this.y = y;
-            this.g = g; // Coût depuis le départ
-            this.h = h; // Heuristique (distance à vol d'oiseau jusqu'à l'arrivée)
-            this.f = g + h; // Coût total
-            this.parent = parent; // Nœud parent
-        }
-    }
-    
-    // Fonction pour calculer l'heuristique (distance de Manhattan)
-    const heuristic = (x, y) => Math.abs(x - endX) + Math.abs(y - endY);
-    
-    // Listes ouverte et fermée
-    const openList = [];
-    const closedList = new Set();
-    
-    // Ajouter le nœud de départ à la liste ouverte
-    openList.push(new Node(startX, startY, 0, heuristic(startX, startY), null));
-    
-    // Tant que la liste ouverte n'est pas vide
-    while (openList.length > 0) {
-        // Trier la liste ouverte par coût total (f)
-        openList.sort((a, b) => a.f - b.f);
-        
-        // Prendre le nœud avec le coût le plus faible
-        const current = openList.shift();
-        
-        // Ajouter ce nœud à la liste fermée
-        closedList.add(`${current.x},${current.y}`);
-        
-        // Si on est arrivé à destination (ou à côté si stopNextTo est true)
-        if (current.x === endX && current.y === endY ||
-            (stopNextTo && Math.abs(current.x - endX) + Math.abs(current.y - endY) === 1)) {
-            // Reconstruire le chemin
-            const path = [];
-            let node = current;
-            
-            while (node.parent) {
-                path.unshift({ x: node.x, y: node.y });
-                node = node.parent;
-            }
-            
-            return path;
-        }
-        
-        // Directions possibles
-        const directions = [
-            { dx: 0, dy: -1 }, // haut
-            { dx: 1, dy: 0 },  // droite
-            { dx: 0, dy: 1 },  // bas
-            { dx: -1, dy: 0 }  // gauche
-        ];
-        
-        // Explorer les voisins
-        for (const dir of directions) {
-            const newX = current.x + dir.dx;
-            const newY = current.y + dir.dy;
-            
-            // Vérifier si ce voisin est dans les limites
-            if (newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE) {
-                continue;
-            }
-            
-            // Vérifier si ce voisin est un obstacle (mur ou brique)
-            if (gameState.map[newY][newX] !== TILE_TYPES.EMPTY) {
-                continue;
-            }
-            
-            // Vérifier si ce voisin est dans la liste fermée
-            if (closedList.has(`${newX},${newY}`)) {
-                continue;
-            }
-            
-            // Calculer le nouveau coût g
-            const newG = current.g + 1;
-            
-            // Vérifier si ce voisin est déjà dans la liste ouverte
-            const existingNode = openList.find(node => node.x === newX && node.y === newY);
-            
-            if (existingNode) {
-                // Si on a trouvé un meilleur chemin, mettre à jour le nœud
-                if (newG < existingNode.g) {
-                    existingNode.g = newG;
-                    existingNode.f = newG + existingNode.h;
-                    existingNode.parent = current;
-                }
-            } else {
-                // Ajouter ce voisin à la liste ouverte
-                openList.push(new Node(newX, newY, newG, heuristic(newX, newY), current));
-            }
-        }
-    }
-    
-    // Si on arrive ici, c'est qu'on n'a pas trouvé de chemin
-    return null;
-}
-
-// L'IA place une bombe
-function placeAIBomb(aiPlayer) {
-    // Obtenir la position de la grille
     const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
     const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
     
@@ -719,27 +47,566 @@ function placeAIBomb(aiPlayer) {
         bomb.x === gridX && bomb.y === gridY
     );
     
+    // Si une bombe est déjà là, ne pas en placer une autre
+    if (bombsAtPosition.length > 0) return;
+    
     // Compte le nombre de bombes actives de l'IA
     const activeBombs = gameState.bombs.filter(bomb => 
         bomb.playerId === aiPlayerId
     );
     
-    // Placer la bombe si possible
-    if (bombsAtPosition.length === 0 && activeBombs.length < aiPlayer.maxBombs) {
-        const newBomb = {
-            id: generateId(),
-            playerId: aiPlayerId,
-            x: gridX,
-            y: gridY,
-            range: aiPlayer.bombRange,
-            timer: Date.now() + BOMB_TIMER
-        };
+    // Si l'IA a déjà atteint sa limite de bombes, ne pas en placer d'autres
+    if (activeBombs.length >= aiPlayer.maxBombs) return;
+    
+    // Vérifier s'il y a des briques ou le joueur à proximité
+    let shouldPlaceBomb = false;
+    const player = gameState.players['player1'];
+    
+    // Vérifier les 4 directions + la case actuelle
+    const directions = [
+        { dx: 0, dy: 0 },  // case actuelle
+        { dx: 0, dy: -1 }, // haut
+        { dx: 1, dy: 0 },  // droite
+        { dx: 0, dy: 1 },  // bas
+        { dx: -1, dy: 0 }  // gauche
+    ];
+    
+    for (const dir of directions) {
+        const checkX = gridX + dir.dx;
+        const checkY = gridY + dir.dy;
         
-        // Vérifier si placer une bombe est sécuritaire
-        // (l'IA a au moins une direction pour s'échapper)
-        if (hasEscapeRoute(gridX, gridY)) {
-            // Ajouter la bombe au jeu
-            database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+        // Vérifier si la case est dans les limites
+        if (checkX < 0 || checkX >= GRID_SIZE || checkY < 0 || checkY >= GRID_SIZE) {
+            continue;
+        }
+        
+        // Si c'est une brique, on peut vouloir la détruire
+        if (gameState.map[checkY][checkX] === TILE_TYPES.BRICK) {
+            shouldPlaceBomb = true;
+        }
+        
+        // Si le joueur est là, on veut certainement le viser
+        if (player && player.alive) {
+            const playerGridX = Math.floor(player.x / TILE_SIZE);
+            const playerGridY = Math.floor(player.y / TILE_SIZE);
+            
+            if (checkX === playerGridX && checkY === playerGridY) {
+                shouldPlaceBomb = true;
+                break; // Priorité maximale si on peut toucher le joueur
+            }
         }
     }
+    
+    if (shouldPlaceBomb) {
+        // Vérifier s'il y a une issue pour ne pas se bloquer
+        // (Une seule direction libre suffit)
+        let hasEscape = false;
+        
+        for (let i = 1; i < directions.length; i++) { // ignorer la case actuelle
+            const escapeX = gridX + directions[i].dx;
+            const escapeY = gridY + directions[i].dy;
+            
+            if (escapeX >= 0 && escapeX < GRID_SIZE && escapeY >= 0 && escapeY < GRID_SIZE) {
+                if (gameState.map[escapeY][escapeX] === TILE_TYPES.EMPTY) {
+                    hasEscape = true;
+                    break;
+                }
+            }
+        }
+        
+        if (hasEscape) {
+            // Placer la bombe
+            const newBomb = {
+                id: generateId(),
+                playerId: aiPlayerId,
+                x: gridX,
+                y: gridY,
+                range: aiPlayer.bombRange,
+                timer: Date.now() + BOMB_TIMER
+            };
+            
+            database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+            
+            // Mémoriser qu'il faut fuir
+            aiTarget = {
+                type: 'escape',
+                timestamp: Date.now()
+            };
+        }
+    }
+}
+
+// Fonction pour trouver une direction d'échappement
+function findEscapeDirection(aiPlayer) {
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    
+    // Liste des directions possibles
+    const directions = [
+        { dx: 0, dy: -1, priority: 0 }, // haut
+        { dx: 1, dy: 0, priority: 0 },  // droite
+        { dx: 0, dy: 1, priority: 0 },  // bas
+        { dx: -1, dy: 0, priority: 0 }  // gauche
+    ];
+    
+    // Évaluer chaque direction
+    for (const dir of directions) {
+        const newX = gridX + dir.dx;
+        const newY = gridY + dir.dy;
+        
+        // Vérifier si cette direction est valide
+        if (newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE) {
+            dir.priority = -1000; // Direction invalide
+            continue;
+        }
+        
+        // Si c'est un mur ou une brique, on ne peut pas aller par là
+        if (gameState.map[newY][newX] !== TILE_TYPES.EMPTY) {
+            dir.priority = -1000;
+            continue;
+        }
+        
+        // Vérifier s'il y a une bombe ici
+        const bombHere = gameState.bombs.some(bomb => bomb.x === newX && bomb.y === newY);
+        if (bombHere) {
+            dir.priority = -500;
+            continue;
+        }
+        
+        // Calculer la distance aux bombes (plus c'est loin, mieux c'est)
+        let minBombDistance = 1000;
+        for (const bomb of gameState.bombs) {
+            // Manhattan distance
+            const distance = Math.abs(bomb.x - newX) + Math.abs(bomb.y - newY);
+            minBombDistance = Math.min(minBombDistance, distance);
+        }
+        
+        // Ajouter la distance aux bombes à la priorité
+        dir.priority += minBombDistance * 10;
+        
+        // Vérifier si on est sur la même ligne ou colonne qu'une bombe (dangereux)
+        for (const bomb of gameState.bombs) {
+            const bombRange = bomb.range || 1;
+            
+            // Même ligne
+            if (newY === bomb.y && Math.abs(newX - bomb.x) <= bombRange) {
+                // Vérifier s'il y a un obstacle entre nous et la bombe
+                let blocked = false;
+                const start = Math.min(newX, bomb.x);
+                const end = Math.max(newX, bomb.x);
+                
+                for (let x = start + 1; x < end; x++) {
+                    if (gameState.map[newY][x] !== TILE_TYPES.EMPTY) {
+                        blocked = true;
+                        break;
+                    }
+                }
+                
+                if (!blocked) {
+                    dir.priority -= 300; // Direction dangereuse
+                }
+            }
+            
+            // Même colonne
+            if (newX === bomb.x && Math.abs(newY - bomb.y) <= bombRange) {
+                // Vérifier s'il y a un obstacle entre nous et la bombe
+                let blocked = false;
+                const start = Math.min(newY, bomb.y);
+                const end = Math.max(newY, bomb.y);
+                
+                for (let y = start + 1; y < end; y++) {
+                    if (gameState.map[y][newX] !== TILE_TYPES.EMPTY) {
+                        blocked = true;
+                        break;
+                    }
+                }
+                
+                if (!blocked) {
+                    dir.priority -= 300; // Direction dangereuse
+                }
+            }
+        }
+    }
+    
+    // Trier les directions par priorité
+    directions.sort((a, b) => b.priority - a.priority);
+    
+    // Retourner la meilleure direction si elle est valide
+    if (directions[0].priority > -100) {
+        return directions[0];
+    }
+    
+    // Si aucune direction n'est bonne, retourner null
+    return null;
+}
+
+// Fonction pour vérifier si l'IA est en danger
+function isInDanger(aiPlayer) {
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    
+    // Vérifier s'il y a une bombe à la position actuelle
+    const bombHere = gameState.bombs.some(bomb => bomb.x === gridX && bomb.y === gridY);
+    if (bombHere) return true;
+    
+    // Vérifier si on est dans la zone d'explosion d'une bombe
+    for (const bomb of gameState.bombs) {
+        const bombRange = bomb.range || 1;
+        
+        // Même ligne
+        if (gridY === bomb.y && Math.abs(gridX - bomb.x) <= bombRange) {
+            // Vérifier s'il y a un obstacle entre nous et la bombe
+            let blocked = false;
+            const start = Math.min(gridX, bomb.x);
+            const end = Math.max(gridX, bomb.x);
+            
+            for (let x = start + 1; x < end; x++) {
+                if (gameState.map[gridY][x] !== TILE_TYPES.EMPTY) {
+                    blocked = true;
+                    break;
+                }
+            }
+            
+            if (!blocked) return true;
+        }
+        
+        // Même colonne
+        if (gridX === bomb.x && Math.abs(gridY - bomb.y) <= bombRange) {
+            // Vérifier s'il y a un obstacle entre nous et la bombe
+            let blocked = false;
+            const start = Math.min(gridY, bomb.y);
+            const end = Math.max(gridY, bomb.y);
+            
+            for (let y = start + 1; y < end; y++) {
+                if (gameState.map[y][gridX] !== TILE_TYPES.EMPTY) {
+                    blocked = true;
+                    break;
+                }
+            }
+            
+            if (!blocked) return true;
+        }
+    }
+    
+    return false;
+}
+
+// Fonction pour trouver une cible (joueur ou brique)
+function findTarget(aiPlayer) {
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    
+    // Probabilité de cibler le joueur (75%) ou une brique (25%)
+    const targetPlayer = Math.random() < 0.75;
+    
+    if (targetPlayer) {
+        // Essayer de cibler le joueur
+        const player = gameState.players['player1'];
+        if (player && player.alive) {
+            const playerGridX = Math.floor(player.x / TILE_SIZE);
+            const playerGridY = Math.floor(player.y / TILE_SIZE);
+            
+            return {
+                type: 'player',
+                x: playerGridX,
+                y: playerGridY,
+                timestamp: Date.now()
+            };
+        }
+    }
+    
+    // Sinon, chercher une brique proche
+    const bricks = [];
+    
+    // Chercher des briques dans un rayon de 5 cases
+    const searchRadius = 5;
+    
+    for (let y = Math.max(0, gridY - searchRadius); y <= Math.min(GRID_SIZE - 1, gridY + searchRadius); y++) {
+        for (let x = Math.max(0, gridX - searchRadius); x <= Math.min(GRID_SIZE - 1, gridX + searchRadius); x++) {
+            if (gameState.map[y][x] === TILE_TYPES.BRICK) {
+                // Calculer la distance
+                const distance = Math.abs(gridX - x) + Math.abs(gridY - y);
+                bricks.push({ x, y, distance });
+            }
+        }
+    }
+    
+    // Trier par distance croissante
+    bricks.sort((a, b) => a.distance - b.distance);
+    
+    if (bricks.length > 0) {
+        // Prendre une brique aléatoire parmi les 3 plus proches
+        const targetIndex = Math.min(Math.floor(Math.random() * 3), bricks.length - 1);
+        const target = bricks[targetIndex];
+        
+        return {
+            type: 'brick',
+            x: target.x,
+            y: target.y,
+            timestamp: Date.now()
+        };
+    }
+    
+    // Si on n'a trouvé ni joueur ni brique, cibler une position aléatoire
+    return {
+        type: 'random',
+        x: Math.floor(Math.random() * GRID_SIZE),
+        y: Math.floor(Math.random() * GRID_SIZE),
+        timestamp: Date.now()
+    };
+}
+
+// Fonction pour trouver un chemin vers une cible
+function findPathToTarget(startX, startY, targetX, targetY) {
+    // Directions possibles
+    const directions = [
+        { dx: 0, dy: -1 }, // haut
+        { dx: 1, dy: 0 },  // droite
+        { dx: 0, dy: 1 },  // bas
+        { dx: -1, dy: 0 }  // gauche
+    ];
+    
+    // Si la cible est un mur ou une brique, trouver une case adjacente
+    if (gameState.map[targetY][targetX] !== TILE_TYPES.EMPTY) {
+        for (const dir of directions) {
+            const adjX = targetX + dir.dx;
+            const adjY = targetY + dir.dy;
+            
+            if (adjX >= 0 && adjX < GRID_SIZE && adjY >= 0 && adjY < GRID_SIZE) {
+                if (gameState.map[adjY][adjX] === TILE_TYPES.EMPTY) {
+                    targetX = adjX;
+                    targetY = adjY;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Utiliser un algorithme simple de recherche de chemin (BFS)
+    const queue = [];
+    const visited = {};
+    const parents = {};
+    
+    // Ajouter la position de départ
+    queue.push({ x: startX, y: startY });
+    visited[`${startX},${startY}`] = true;
+    
+    while (queue.length > 0) {
+        const current = queue.shift();
+        
+        // Si on est arrivé à la cible (ou à une case adjacente pour le joueur)
+        if (current.x === targetX && current.y === targetY) {
+            // Reconstruire le chemin
+            const path = [];
+            let pos = { x: current.x, y: current.y };
+            
+            while (parents[`${pos.x},${pos.y}`]) {
+                path.unshift(pos);
+                pos = parents[`${pos.x},${pos.y}`];
+            }
+            
+            return path;
+        }
+        
+        // Explorer les voisins
+        for (const dir of directions) {
+            const newX = current.x + dir.dx;
+            const newY = current.y + dir.dy;
+            
+            // Vérifier si cette position est valide
+            if (newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE) {
+                continue;
+            }
+            
+            // Vérifier si cette position est un obstacle
+            if (gameState.map[newY][newX] !== TILE_TYPES.EMPTY) {
+                continue;
+            }
+            
+            // Vérifier si on n'a pas déjà visité cette position
+            if (visited[`${newX},${newY}`]) {
+                continue;
+            }
+            
+            // Ajouter cette position à la file d'attente
+            queue.push({ x: newX, y: newY });
+            visited[`${newX},${newY}`] = true;
+            parents[`${newX},${newY}`] = { x: current.x, y: current.y };
+        }
+    }
+    
+    // Si on n'a pas trouvé de chemin
+    return null;
+}
+
+// Déplacer l'IA - version améliorée et plus agressive
+function moveAI(aiPlayer) {
+    // Obtenir la position actuelle de l'IA sur la grille
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    
+    // S'assurer que l'IA est bien centrée sur sa case
+    const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
+    const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
+    
+    // Vérifier si l'IA est en danger (priorité maximale)
+    const danger = isInDanger(aiPlayer);
+    
+    if (danger) {
+        // On est en danger, il faut fuir!
+        const escapeDir = findEscapeDirection(aiPlayer);
+        
+        if (escapeDir) {
+            // On a trouvé une direction pour s'échapper
+            const newX = aiPlayer.x + escapeDir.dx * PLAYER_SPEED;
+            const newY = aiPlayer.y + escapeDir.dy * PLAYER_SPEED;
+            
+            if (isValidPosition(newX, newY)) {
+                aiPlayer.x = newX;
+                aiPlayer.y = newY;
+                
+                // Synchroniser avec Firebase
+                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+                    x: aiPlayer.x,
+                    y: aiPlayer.y
+                });
+                
+                return;
+            }
+        }
+    }
+    
+    // Si on n'est pas centré (et pas en danger), se centrer d'abord
+    if (Math.abs(aiPlayer.x - centerX) > 2 || Math.abs(aiPlayer.y - centerY) > 2) {
+        const dx = Math.sign(centerX - aiPlayer.x) * Math.min(PLAYER_SPEED, Math.abs(centerX - aiPlayer.x));
+        const dy = Math.sign(centerY - aiPlayer.y) * Math.min(PLAYER_SPEED, Math.abs(centerY - aiPlayer.y));
+        
+        aiPlayer.x += dx;
+        aiPlayer.y += dy;
+        
+        // Synchroniser avec Firebase
+        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+            x: aiPlayer.x,
+            y: aiPlayer.y
+        });
+        
+        return;
+    }
+    
+    // Mettre à jour la cible si nécessaire (toutes les 3 secondes)
+    const currentTime = Date.now();
+    if (!aiTarget || currentTime - aiTarget.timestamp > 3000) {
+        aiTarget = findTarget(aiPlayer);
+    }
+    
+    // Si on a une cible, essayer de s'y rendre
+    if (aiTarget) {
+        if (aiTarget.type === 'escape') {
+            // Si on doit s'échapper, on l'a déjà fait ci-dessus
+            // Après 1 seconde, on peut arrêter de fuir
+            if (currentTime - aiTarget.timestamp > 1000) {
+                aiTarget = null;
+            }
+            return;
+        }
+        
+        // Trouver un chemin vers la cible
+        const path = findPathToTarget(gridX, gridY, aiTarget.x, aiTarget.y);
+        
+        if (path && path.length > 0) {
+            // Prendre la première étape du chemin
+            const nextStep = path[0];
+            
+            // Calculer la direction de mouvement
+            const dx = (nextStep.x * TILE_SIZE + TILE_SIZE / 2) - aiPlayer.x;
+            const dy = (nextStep.y * TILE_SIZE + TILE_SIZE / 2) - aiPlayer.y;
+            
+            // Normaliser et appliquer la vitesse
+            const length = Math.sqrt(dx * dx + dy * dy);
+            if (length > 0) {
+                const normalizedDx = dx / length * PLAYER_SPEED;
+                const normalizedDy = dy / length * PLAYER_SPEED;
+                
+                // Vérifier si le mouvement est valide
+                const newX = aiPlayer.x + normalizedDx;
+                const newY = aiPlayer.y + normalizedDy;
+                
+                if (isValidPosition(newX, newY)) {
+                    aiPlayer.x = newX;
+                    aiPlayer.y = newY;
+                    
+                    // Synchroniser avec Firebase
+                    database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+                        x: aiPlayer.x,
+                        y: aiPlayer.y
+                    });
+                    
+                    // Si on est arrivé à destination
+                    if (Math.abs(aiPlayer.x - (nextStep.x * TILE_SIZE + TILE_SIZE / 2)) < 2 &&
+                        Math.abs(aiPlayer.y - (nextStep.y * TILE_SIZE + TILE_SIZE / 2)) < 2) {
+                        
+                        // Si on est proche de la cible finale
+                        if (nextStep.x === aiTarget.x && nextStep.y === aiTarget.y) {
+                            // Considérer de poser une bombe avec une probabilité élevée
+                            if (Math.random() < 0.7) {
+                                tryPlaceBomb(aiPlayer);
+                            }
+                            
+                            // Réinitialiser la cible
+                            aiTarget = null;
+                        }
+                    }
+                    
+                    return;
+                }
+            }
+        }
+    }
+    
+    // Si on n'a pas pu suivre un chemin, faire un mouvement aléatoire
+    // Directions possibles
+    const directions = [
+        { dx: 0, dy: -PLAYER_SPEED }, // haut
+        { dx: PLAYER_SPEED, dy: 0 },  // droite
+        { dx: 0, dy: PLAYER_SPEED },  // bas
+        { dx: -PLAYER_SPEED, dy: 0 }  // gauche
+    ];
+    
+    // Filtrer les directions valides
+    const validDirections = directions.filter(dir => {
+        const newX = aiPlayer.x + dir.dx;
+        const newY = aiPlayer.y + dir.dy;
+        return isValidPosition(newX, newY);
+    });
+    
+    // Favoriser la direction actuelle pour éviter les zigzags
+    const continueStraight = validDirections.find(dir => 
+        Math.abs(dir.dx - aiLastMove.dx) < 0.1 && Math.abs(dir.dy - aiLastMove.dy) < 0.1
+    );
+    
+    if (continueStraight && Math.random() < 0.7 && aiLastMove.dx !== 0 && aiLastMove.dy !== 0) {
+        // 70% de chance de continuer dans la même direction
+        const newX = aiPlayer.x + continueStraight.dx;
+        const newY = aiPlayer.y + continueStraight.dy;
+        
+        aiPlayer.x = newX;
+        aiPlayer.y = newY;
+        aiLastMove = continueStraight;
+    } else if (validDirections.length > 0) {
+        // Sinon prendre une direction aléatoire
+        const randomDir = validDirections[Math.floor(Math.random() * validDirections.length)];
+        
+        const newX = aiPlayer.x + randomDir.dx;
+        const newY = aiPlayer.y + randomDir.dy;
+        
+        aiPlayer.x = newX;
+        aiPlayer.y = newY;
+        aiLastMove = randomDir;
+    }
+    
+    // Synchroniser avec Firebase
+    database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+        x: aiPlayer.x,
+        y: aiPlayer.y
+    });
 }
