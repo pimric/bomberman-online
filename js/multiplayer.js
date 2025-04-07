@@ -1,35 +1,9 @@
 // Gestion du multijoueur et des parties
 
 // Écouteurs pour les boutons de création/connexion
-document.getElementById('createBtn').addEventListener('click', function() {
-    log("Bouton createBtn cliqué");
-    createGame();
-});
-
-document.getElementById('joinBtn').addEventListener('click', function() {
-    log("Bouton joinBtn cliqué");
-    joinExistingGame();
-});
-
-document.getElementById('singlePlayerBtn').addEventListener('click', function() {
-    log("Bouton singlePlayerBtn cliqué");
-    createSinglePlayerGame();
-});
-
-document.getElementById('restartBtn').addEventListener('click', function() {
-    log("Bouton restartBtn cliqué");
-    restartGame();
-});
-
-document.getElementById('homeBtn').addEventListener('click', function() {
-    log("Bouton homeBtn cliqué");
-    returnToHome();
-});
-
-// Fonction pour journaliser les messages (à ajouter si non définie ailleurs)
-function log(message) {
-    console.log(`[${new Date().toISOString()}] ${message}`);
-}
+document.getElementById('createBtn').addEventListener('click', createGame);
+document.getElementById('joinBtn').addEventListener('click', joinExistingGame);
+document.getElementById('singlePlayerBtn').addEventListener('click', createSinglePlayerGame);
 
 // Créer une nouvelle partie multijoueur
 function createGame() {
@@ -45,7 +19,7 @@ function createGame() {
     gameRef.set({
         map: generateMap(),
         players: {
-            player1: createPlayer(0,, '#ff6b6b')
+            player1: createPlayer(0, 0, '#ff6b6b')
         },
         bombs: {},
         explosions: {},
@@ -228,3 +202,7 @@ function returnToHome() {
     // Rediriger vers la page d'accueil
     window.location.href = 'index.html';
 }
+
+// Ajout des écouteurs d'événements pour les nouveaux boutons
+document.getElementById('restartBtn').addEventListener('click', restartGame);
+document.getElementById('homeBtn').addEventListener('click', returnToHome);
