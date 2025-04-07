@@ -1,3 +1,6 @@
+/* Styles communs pour tout le site Island Bomber */
+
+/* Styles de base pour le corps de la page */
 body {
     background: linear-gradient(135deg, #0099cc, #006699);
     display: flex;
@@ -13,15 +16,19 @@ body {
     background-blend-mode: soft-light;
 }
 
-#gameContainer {
+/* Styles pour les conteneurs */
+.container, #gameContainer {
     text-align: center;
     background-color: rgba(0, 0, 0, 0.5);
     padding: 20px;
     border-radius: 15px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
     border: 3px solid #ffd700;
+    max-width: 800px;
+    margin: 0 auto;
 }
 
+/* Styles pour le canvas de jeu */
 canvas {
     border: 4px solid #ffd700;
     background-color: #f9e8b0; /* Sand color */
@@ -29,8 +36,9 @@ canvas {
     border-radius: 8px;
 }
 
+/* Styles pour les titres */
 h1 {
-    font-size: 32px;
+    font-size: 36px;
     color: #ffd700; /* Gold color for reggae vibe */
     margin-bottom: 15px;
     text-transform: uppercase;
@@ -39,7 +47,35 @@ h1 {
     font-weight: bold;
 }
 
-#roomControls {
+.title {
+    font-size: 36px;
+    color: #ffd700;
+    margin: 20px 0;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    text-shadow: 3px 3px 0px #000;
+}
+
+h2, .section-title {
+    color: #ff6b6b;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+    margin-top: 20px;
+}
+
+h3 {
+    color: #4ecdc4;
+    margin-top: 15px;
+}
+
+.subtitle {
+    font-size: 18px;
+    color: #4ecdc4;
+    margin-bottom: 30px;
+}
+
+/* Styles pour les contrôles de salle */
+#roomControls, .control-group {
     margin: 20px 0;
     padding: 15px;
     background-color: rgba(34, 139, 34, 0.7); /* Forest green with opacity */
@@ -47,7 +83,8 @@ h1 {
     border: 2px dashed #ffd700;
 }
 
-button {
+/* Styles pour les boutons */
+button, .play-button, .gameButton {
     background: linear-gradient(to bottom, #ff9900, #ff6600);
     color: white;
     border: none;
@@ -61,19 +98,35 @@ button {
     text-transform: uppercase;
     box-shadow: 0 4px 0 #cc5200;
     transition: all 0.2s;
+    text-decoration: none;
 }
 
-button:hover {
+button:hover, .play-button:hover, .gameButton:hover {
     background: linear-gradient(to bottom, #ffaa33, #ff7722);
     transform: translateY(-2px);
     box-shadow: 0 6px 0 #cc5200;
 }
 
-button:active {
+button:active, .play-button:active, .gameButton:active {
     transform: translateY(2px);
     box-shadow: 0 2px 0 #cc5200;
 }
 
+.play-button {
+    display: inline-block;
+    padding: 15px 30px;
+    font-size: 20px;
+    margin: 20px 0;
+}
+
+.gameButton {
+    padding: 12px 20px;
+    font-size: 16px;
+    margin: 8px;
+    letter-spacing: 1px;
+}
+
+/* Styles pour les champs de saisie */
 input {
     background-color: #ffe6cc;
     color: #663300;
@@ -89,7 +142,7 @@ input::placeholder {
     color: #cc8800;
 }
 
-/* Styles pour les explosions */
+/* Styles pour les effets d'explosion */
 .explosion-animation {
     position: absolute;
     background-color: rgba(255, 165, 0, 0.7);
@@ -102,33 +155,8 @@ input::placeholder {
     100% { transform: scale(1.5); opacity: 0; }
 }
 
-.gameButton {
-    background: linear-gradient(to bottom, #ff9900, #ff6600);
-    color: white;
-    padding: 12px 20px;
-    font-size: 16px;
-    border: none;
-    border-radius: 8px;
-    margin: 8px;
-    cursor: pointer;
-    font-family: 'Comic Sans MS', cursive, sans-serif;
-    box-shadow: 0 4px 0 #cc5200;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.gameButton:hover {
-    background: linear-gradient(to bottom, #ffaa33, #ff7722);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 0 #cc5200;
-}
-
-.gameButton:active {
-    transform: translateY(2px);
-    box-shadow: 0 2px 0 #cc5200;
-}
-
-#gameInfo {
+/* Styles pour les infos de jeu et statut */
+#gameInfo, .game-status {
     background-color: rgba(255, 215, 0, 0.3);
     padding: 10px;
     border-radius: 8px;
@@ -136,4 +164,69 @@ input::placeholder {
     font-weight: bold;
     text-shadow: 1px 1px 0px #000;
     letter-spacing: 1px;
+}
+
+.game-status {
+    background-color: #333;
+    color: #4ecdc4;
+    margin-top: 20px;
+}
+
+/* Styles pour les boites d'information */
+.info-box {
+    background-color: #222;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 30px 0;
+    text-align: left;
+}
+
+/* Styles pour les groupes de contrôles */
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    margin: 20px 0;
+}
+
+.control-group {
+    margin: 10px;
+    min-width: 200px;
+    background-color: #333;
+}
+
+/* Styles pour le pied de page */
+.footer {
+    margin-top: 40px;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Adaptations pour les mobiles */
+@media (max-width: 600px) {
+    .container, #gameContainer {
+        padding: 10px;
+        width: 90%;
+    }
+    
+    h1, .title {
+        font-size: 28px;
+    }
+    
+    button, .gameButton {
+        margin: 5px;
+        padding: 8px 15px;
+    }
+    
+    .play-button {
+        padding: 12px 25px;
+    }
+    
+    .control-group {
+        min-width: 100%;
+    }
+    
+    canvas {
+        max-width: 100%;
+    }
 }
