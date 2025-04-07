@@ -187,64 +187,6 @@
 
         log("Script démarré");
 
-        // Ajout des écouteurs d'événements pour les boutons avec système de log
-        log("Ajout des écouteurs d'événements pour les boutons");
-        
-        const createBtn = document.getElementById('createBtn');
-        if (createBtn) {
-            createBtn.addEventListener('click', function() {
-                log("Bouton createBtn cliqué");
-                createGame();
-            });
-            log("Écouteur ajouté pour createBtn");
-        } else {
-            console.error("Élément createBtn non trouvé");
-        }
-        
-        const joinBtn = document.getElementById('joinBtn');
-        if (joinBtn) {
-            joinBtn.addEventListener('click', function() {
-                log("Bouton joinBtn cliqué");
-                joinExistingGame();
-            });
-            log("Écouteur ajouté pour joinBtn");
-        } else {
-            console.error("Élément joinBtn non trouvé");
-        }
-        
-        const singlePlayerBtn = document.getElementById('singlePlayerBtn');
-        if (singlePlayerBtn) {
-            singlePlayerBtn.addEventListener('click', function() {
-                log("Bouton singlePlayerBtn cliqué");
-                createSinglePlayerGame();
-            });
-            log("Écouteur ajouté pour singlePlayerBtn");
-        } else {
-            console.error("Élément singlePlayerBtn non trouvé");
-        }
-        
-        const restartBtn = document.getElementById('restartBtn');
-        if (restartBtn) {
-            restartBtn.addEventListener('click', function() {
-                log("Bouton restartBtn cliqué");
-                restartGame();
-            });
-            log("Écouteur ajouté pour restartBtn");
-        } else {
-            console.error("Élément restartBtn non trouvé");
-        }
-        
-        const homeBtn = document.getElementById('homeBtn');
-        if (homeBtn) {
-            homeBtn.addEventListener('click', function() {
-                log("Bouton homeBtn cliqué");
-                returnToHome();
-            });
-            log("Écouteur ajouté pour homeBtn");
-        } else {
-            console.error("Élément homeBtn non trouvé");
-        }
-
         // Gérer les entrées clavier
         window.addEventListener('keydown', (e) => {
             gameState.keys[e.key] = true;
