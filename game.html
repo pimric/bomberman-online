@@ -672,212 +672,149 @@
         // LOGIQUE DE L'IA AMÉLIORÉE
         //--------------------------------------------------
 
-        // Démarrer l'IA
-        function startAI() {
-            if (aiMoveInterval) clearInterval(aiMoveInterval);
-            
-            log("IA activée");
-            
-            aiMoveInterval = setInterval(() => {
-                if (!gameState.gameStarted || !aiMode) return;
-                
-                const aiPlayer = gameState.players[aiPlayerId];
-                if (!aiPlayer || !aiPlayer.alive) {
-                    clearInterval(aiMoveInterval);
-                    return;
-                }
-                
-                // Logique de mouvement de l'IA améliorée
-                moveAI(aiPlayer);
-                
-                // Possibilité de placer une bombe
-                if (Math.random() < AI_BOMB_PROBABILITY) {
-                    tryPlaceAIBomb(aiPlayer);
-                }
-            }, AI_MOVE_DELAY);
+        // Déplacer l'IA - version corrigée
+function moveAI(aiPlayer) {
+    // Obtenir la position actuelle de l'IA sur la grille
+    const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
+    const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
+    
+    // Vérifier s'il y a un bonus à collecter à cette position
+    if (getBonusAt(gridX, gridY)) {
+        collectBonus(aiPlayerId, getBonusAt(gridX, gridY));
+        updateDebugInfo("Bonus collecté!");
+        return;
+    }
+    
+    // Directions possibles: haut, bas, gauche, droite
+    const directions = [
+        { dx: 0, dy: -1, name: 'haut' },
+        { dx: 0, dy: 1, name: 'bas' },
+        { dx: -1, dy: 0, name: 'gauche' },
+        { dx: 1, dy: 0, name: 'droite' }
+    ];
+    
+    // Filtrer les directions valides (sans obstacle)
+    const validDirections = directions.filter(dir => {
+        const newGridX = gridX + dir.dx;
+        const newGridY = gridY + dir.dy;
+        return isGridAccessible(newGridX, newGridY) && !hasBomb(newGridX, newGridY);
+    });
+    
+    // Si aucune direction valide, rester immobile
+    if (validDirections.length === 0) {
+        // Si l'IA est bloquée, essayer de poser une bombe pour se frayer un chemin
+        if (Math.random() < 0.5) {
+            tryPlaceAIBomb(aiPlayer);
         }
-
-        // Déplacer l'IA - version améliorée
-        function moveAI(aiPlayer) {
-            // Obtenir la position actuelle de l'IA sur la grille
-            const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
-            const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
-            
-            // S'assurer que l'IA est bien centrée sur sa case actuelle
-            const centerX = gridX * TILE_SIZE + TILE_SIZE / 2;
-            const centerY = gridY * TILE_SIZE + TILE_SIZE / 2;
-            
-            // Si l'IA n'est pas bien centrée, la recentrer d'abord
-            if (Math.abs(aiPlayer.x - centerX) > 2 || Math.abs(aiPlayer.y - centerY) > 2) {
-                const dx = Math.sign(centerX - aiPlayer.x) * Math.min(PLAYER_SPEED, Math.abs(centerX - aiPlayer.x));
-                const dy = Math.sign(centerY - aiPlayer.y) * Math.min(PLAYER_SPEED, Math.abs(centerY - aiPlayer.y));
-                
-                if (dx !== 0) aiPlayer.x += dx;
-                if (dy !== 0) aiPlayer.y += dy;
-                
-                // Synchroniser avec Firebase
-                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-                    x: aiPlayer.x,
-                    y: aiPlayer.y
-                });
-                
-                updateDebugInfo("Recentrage");
-                return; // Ne pas faire d'autre mouvement pour ce tour
-            }
-            
-            // Vérifier s'il y a un bonus à collecter à cette position
-            if (getBonusAt(gridX, gridY)) {
-                collectBonus(aiPlayerId, getBonusAt(gridX, gridY));
-                updateDebugInfo("Bonus collecté!");
-                return;
-            }
-            
-            // Directions possibles: haut, bas, gauche, droite
-            const directions = [
-                { dx: 0, dy: -1, name: 'haut' },
-                { dx: 0, dy: 1, name: 'bas' },
-                { dx: -1, dy: 0, name: 'gauche' },
-                { dx: 1, dy: 0, name: 'droite' }
-            ];
-            
-            // Filtrer les directions valides (sans obstacle)
-            const validDirections = directions.filter(dir => {
-                // Vérifier la position après le mouvement complet
-                const newGridX = Math.floor((aiPlayer.x + dir.dx * 4) / TILE_SIZE);
-                const newGridY = Math.floor((aiPlayer.y + dir.dy * 4) / TILE_SIZE);
-                
-                if (newGridX !== gridX || newGridY !== gridY) {
-                    // On vérifie si la nouvelle case est accessible
-                    return newGridX >= 0 && newGridX < GRID_SIZE && 
-                           newGridY >= 0 && newGridY < GRID_SIZE && 
-                           gameState.map[newGridY][newGridX] === TILE_TYPES.EMPTY &&
-                           !hasBomb(newGridX, newGridY);
-                }
-                
-                // Si on reste sur la même case, c'est valide
-                return true;
+        updateDebugInfo("Bloqué");
+        return;
+    }
+    
+    // Vérifier s'il y a des bombes à proximité
+    const nearbyBomb = isNearExplosion(gridX, gridY);
+    
+    let chosenDirection;
+    
+    // Si une bombe est à proximité, fuir
+    if (nearbyBomb) {
+        chosenDirection = getBestEscapeDirection(gridX, gridY, validDirections);
+        updateDebugInfo("Fuite de bombe");
+    } else {
+        // Vérifier s'il y a un bonus à proximité
+        const nearestBonus = findNearestBonus(gridX, gridY);
+        
+        if (nearestBonus && nearestBonus.distance < 5) {
+            // Aller vers le bonus
+            validDirections.sort((a, b) => {
+                const distA = Math.abs((gridX + a.dx) - nearestBonus.bonus.x) + 
+                              Math.abs((gridY + a.dy) - nearestBonus.bonus.y);
+                const distB = Math.abs((gridX + b.dx) - nearestBonus.bonus.x) + 
+                              Math.abs((gridY + b.dy) - nearestBonus.bonus.y);
+                return distA - distB;
             });
             
-            // Si aucune direction valide, rester immobile
-            if (validDirections.length === 0) {
-                // Si l'IA est bloquée, essayer de poser une bombe pour se frayer un chemin
-                if (Math.random() < 0.5) {
-                    tryPlaceAIBomb(aiPlayer);
-                }
-                updateDebugInfo("Bloqué");
-                return;
-            }
+            chosenDirection = validDirections[0];
+            updateDebugInfo("Vers bonus");
+        } else {
+            // Comportement normal: se diriger vers le joueur humain
+            const player = gameState.players['player1'];
             
-            // Vérifier s'il y a des bombes à proximité
-            const nearbyBomb = isNearExplosion(gridX, gridY);
-            
-            let chosenDirection;
-            
-            // Si une bombe est à proximité, fuir
-            if (nearbyBomb) {
-                chosenDirection = getBestEscapeDirection(gridX, gridY, validDirections);
-                updateDebugInfo("Fuite de bombe");
-            } else {
-                // Vérifier s'il y a un bonus à proximité
-                const nearestBonus = findNearestBonus(gridX, gridY);
+            if (player && player.alive) {
+                // Éviter les mouvements d'aller-retour
+                const nonBacktrackingMoves = validDirections.filter(dir =>
+                    !(dir.dx === -aiLastMove.dx && dir.dy === -aiLastMove.dy)
+                );
                 
-                if (nearestBonus && nearestBonus.distance < 5) {
-                    // Aller vers le bonus
-                    validDirections.sort((a, b) => {
-                        const distA = Math.abs((gridX + a.dx) - nearestBonus.bonus.x) + 
-                                      Math.abs((gridY + a.dy) - nearestBonus.bonus.y);
-                        const distB = Math.abs((gridX + b.dx) - nearestBonus.bonus.x) + 
-                                      Math.abs((gridY + b.dy) - nearestBonus.bonus.y);
+                const movesToConsider = nonBacktrackingMoves.length > 0 ? 
+                                       nonBacktrackingMoves : validDirections;
+                
+                // Intelligence simple: chercher à s'approcher du joueur humain
+                const distanceToPlayer = Math.sqrt(
+                    Math.pow((player.x - aiPlayer.x) / TILE_SIZE, 2) + 
+                    Math.pow((player.y - aiPlayer.y) / TILE_SIZE, 2)
+                );
+                
+                if (distanceToPlayer < 3 && Math.random() < 0.3) {
+                    // Échapper au joueur s'il est trop proche (parfois)
+                    const playerDirX = player.x > aiPlayer.x ? 1 : -1;
+                    const playerDirY = player.y > aiPlayer.y ? 1 : -1;
+                    
+                    // Chercher une direction qui s'éloigne du joueur
+                    const escapeDirs = movesToConsider.filter(dir => {
+                        return (dir.dx * playerDirX <= 0) || (dir.dy * playerDirY <= 0);
+                    });
+                    
+                    chosenDirection = escapeDirs.length > 0 
+                        ? escapeDirs[Math.floor(Math.random() * escapeDirs.length)]
+                        : movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
+                        
+                    updateDebugInfo("Évite joueur");
+                    
+                    // Forte chance de poser une bombe près du joueur
+                    if (distanceToPlayer < 2 && Math.random() < 0.6) {
+                        tryPlaceAIBomb(aiPlayer);
+                    }
+                } else {
+                    // Se déplacer vers le joueur
+                    movesToConsider.sort((a, b) => {
+                        const distA = Math.abs((gridX + a.dx) - Math.floor(player.x / TILE_SIZE)) + 
+                                     Math.abs((gridY + a.dy) - Math.floor(player.y / TILE_SIZE));
+                        const distB = Math.abs((gridX + b.dx) - Math.floor(player.x / TILE_SIZE)) + 
+                                     Math.abs((gridY + b.dy) - Math.floor(player.y / TILE_SIZE));
                         return distA - distB;
                     });
                     
-                    chosenDirection = validDirections[0];
-                    updateDebugInfo("Vers bonus");
-                } else {
-                    // Comportement normal: se diriger vers le joueur humain
-                    const player = gameState.players['player1'];
-                    
-                    if (player && player.alive) {
-                        // Éviter les mouvements d'aller-retour
-                        const nonBacktrackingMoves = validDirections.filter(dir =>
-                            !(dir.dx === -aiLastMove.dx && dir.dy === -aiLastMove.dy)
-                        );
+                    // Ajouter du hasard pour que l'IA ne soit pas trop prévisible
+                    chosenDirection = Math.random() < 0.7 
+                        ? movesToConsider[0] // 70% de chance de prendre la meilleure direction
+                        : movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
                         
-                        const movesToConsider = nonBacktrackingMoves.length > 0 ? 
-                                               nonBacktrackingMoves : validDirections;
-                        
-                        // Intelligence simple: chercher à s'approcher du joueur humain
-                        const distanceToPlayer = Math.sqrt(
-                            Math.pow((player.x - aiPlayer.x) / TILE_SIZE, 2) + 
-                            Math.pow((player.y - aiPlayer.y) / TILE_SIZE, 2)
-                        );
-                        
-                        if (distanceToPlayer < 3 && Math.random() < 0.3) {
-                            // Échapper au joueur s'il est trop proche (parfois)
-                            const playerDirX = player.x > aiPlayer.x ? 1 : -1;
-                            const playerDirY = player.y > aiPlayer.y ? 1 : -1;
-                            
-                            // Chercher une direction qui s'éloigne du joueur
-                            const escapeDirs = movesToConsider.filter(dir => {
-                                return (dir.dx * playerDirX <= 0) || (dir.dy * playerDirY <= 0);
-                            });
-                            
-                            chosenDirection = escapeDirs.length > 0 
-                                ? escapeDirs[Math.floor(Math.random() * escapeDirs.length)]
-                                : movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
-                                
-                            updateDebugInfo("Évite joueur");
-                            
-                            // Forte chance de poser une bombe près du joueur
-                            if (distanceToPlayer < 2 && Math.random() < 0.6) {
-                                tryPlaceAIBomb(aiPlayer);
-                            }
-                        } else {
-                            // Se déplacer vers le joueur
-                            movesToConsider.sort((a, b) => {
-                                const distA = Math.abs((gridX + a.dx) - Math.floor(player.x / TILE_SIZE)) + 
-                                             Math.abs((gridY + a.dy) - Math.floor(player.y / TILE_SIZE));
-                                const distB = Math.abs((gridX + b.dx) - Math.floor(player.x / TILE_SIZE)) + 
-                                             Math.abs((gridY + b.dy) - Math.floor(player.y / TILE_SIZE));
-                                return distA - distB;
-                            });
-                            
-                            // Ajouter du hasard pour que l'IA ne soit pas trop prévisible
-                            chosenDirection = Math.random() < 0.7 
-                                ? movesToConsider[0] // 70% de chance de prendre la meilleure direction
-                                : movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
-                                
-                            updateDebugInfo("Vers joueur");
-                        }
-                    } else {
-                        // Si pas de joueur, déplacement aléatoire
-                        chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
-                        updateDebugInfo("Aléatoire");
-                    }
+                    updateDebugInfo("Vers joueur");
                 }
-            }
-            
-            // Appliquer le mouvement
-            const speedMultiplier = aiPlayer.speedMultiplier || 1;
-            const newX = aiPlayer.x + chosenDirection.dx * PLAYER_SPEED * speedMultiplier;
-            const newY = aiPlayer.y + chosenDirection.dy * PLAYER_SPEED * speedMultiplier;
-            
-            // Vérifier une dernière fois si la position est valide
-            if (isValidPosition(newX, newY)) {
-                // Mettre à jour la position de l'IA
-                aiPlayer.x = newX;
-                aiPlayer.y = newY;
-                
-                // Mémoriser le dernier mouvement pour éviter les aller-retours
-                aiLastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
-                
-                // Synchroniser avec Firebase
-                database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-                    x: aiPlayer.x,
-                    y: aiPlayer.y
-                });
+            } else {
+                // Si pas de joueur, déplacement aléatoire
+                chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+                updateDebugInfo("Aléatoire");
             }
         }
+    }
+    
+    // Appliquer le mouvement directement sans recentrage
+    if (chosenDirection) {
+        const speedMultiplier = aiPlayer.speedMultiplier || 1;
+        aiPlayer.x += chosenDirection.dx * PLAYER_SPEED * speedMultiplier;
+        aiPlayer.y += chosenDirection.dy * PLAYER_SPEED * speedMultiplier;
+        
+        // Mémoriser le dernier mouvement pour éviter les aller-retours
+        aiLastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
+        
+        // Synchroniser avec Firebase
+        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
+            x: aiPlayer.x,
+            y: aiPlayer.y
+        });
+    }
+}
 
         // Vérifier si l'IA est près d'une explosion imminente ou en cours
         function isNearExplosion(gridX, gridY) {
