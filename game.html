@@ -6,6 +6,7 @@
     <title>Island Bomber</title>
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
     <style>
+        /* Styles pour le jeu Island Bomber */
         body {
             background: linear-gradient(135deg, #0099cc, #006699);
             display: flex;
@@ -146,6 +147,33 @@
             text-shadow: 1px 1px 0px #000;
             letter-spacing: 1px;
         }
+
+        /* Styles pour les bonus */
+        .bonus {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); }
+            100% { transform: scale(1.1); }
+        }
+
+        /* Styles pour le panneau de debug (optionnel) */
+        #debug {
+            display: none;
+            margin-top: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            text-align: left;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -168,6 +196,13 @@
         <button id="homeBtn" class="gameButton">Retour à l'île</button>
     </div>
 
+    <!-- Optionnel: Panneau de debug -->
+    <div id="debug" style="display: none;">
+        <div>IA - Position: <span id="aiGridX">0</span>, <span id="aiGridY">0</span> | Bombes: <span id="aiBombs">1</span> | Puissance: <span id="aiPower">2</span></div>
+        <div>Joueur - Position: <span id="playerGridX">0</span>, <span id="playerGridY">0</span> | Bombes: <span id="playerBombs">1</span> | Puissance: <span id="playerPower">2</span></div>
+        <div>Action IA: <span id="aiAction">-</span></div>
+    </div>
+
     <!-- Import Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
@@ -180,10 +215,13 @@
 
         log("Script démarré");
 
-        // Configuration du jeu
+        //--------------------------------------------------
+        // CONFIGURATION DU JEU
+        //--------------------------------------------------
         const GRID_SIZE = 15;
         const TILE_SIZE = 32;
         const PLAYER_SPEED = 3;
+        const COLLISION_MARGIN = 6;
 
         // Définir les types de cases
         const TILE_TYPES = {
@@ -197,7 +235,19 @@
         const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
 
         // Configuration de l'IA
-        const AI_MOVE_DELAY = 500; // Délai entre les mouvements de l'IA (ms)
+        const AI_MOVE_DELAY = 300; // Délai entre les mouvements de l'IA (ms)
+        const AI_BOMB_PROBABILITY = 0.2; // Probabilité de poser une bombe
+
+        // Configuration des bonus
+        const BONUS_PROBABILITY = 0.5; // 50% de chance qu'un tonneau détruit laisse un bonus
+        const BONUS_DURATION = 15000; // Les bonus restent 15 secondes sur la carte
+
+        // Types de bonus
+        const BONUS_TYPES = {
+            BOMB: 0,    // Bombe supplémentaire
+            POWER: 1,   // Augmente la portée des bombes
+            SPEED: 2    // Augmente la vitesse de déplacement
+        };
 
         // Configuration Firebase
         const firebaseConfig = {
@@ -209,7 +259,7 @@
             appId: "1:734188613745:web:96b85d282821b3613d2bd0"
         };
 
-        // Initialiser Firebase avec vos identifiants
+        // Initialiser Firebase
         log("Initialisation de Firebase");
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
@@ -222,9 +272,19 @@
             players: {},
             bombs: [],
             explosions: [],
+            bonuses: [],
             gameStarted: false,
-            keys: {}
+            keys: {},
+            lastKeys: {}, // Pour détecter les nouvelles pressions
+            aiActive: true
         };
+
+        // Variables de l'IA
+        let aiMode = false;
+        let aiPlayerId = 'playerAI';
+        let aiMoveInterval;
+        let aiLastMove = { dx: 0, dy: 0 };
+        let aiLastTargetUpdate = 0;
 
         // Références DOM
         log("Récupération des références DOM");
@@ -232,11 +292,11 @@
         const ctx = canvas.getContext('2d');
         const gameInfo = document.getElementById('gameInfo');
         const roomInput = document.getElementById('roomInput');
+        const debugDiv = document.getElementById('debug');
 
-        // Variables de l'IA
-        let aiMode = false;
-        let aiPlayerId = 'playerAI';
-        let aiMoveInterval;
+        //--------------------------------------------------
+        // FONCTIONS DE BASE DU JEU
+        //--------------------------------------------------
 
         // Générer une carte aléatoire avec des chemins garantis
         function generateMap() {
@@ -306,7 +366,8 @@
                 radius: TILE_SIZE / 2 - 4,
                 color: color,
                 maxBombs: 1,
-                bombRange: 1,
+                bombRange: 2,
+                speedMultiplier: 1,
                 alive: true
             };
         }
@@ -327,7 +388,7 @@
             }
             
             // Vérifier en tenant compte d'une "hitbox" légèrement plus petite que le joueur
-            const margin = 2; // Marge en pixels
+            const margin = COLLISION_MARGIN; // Marge en pixels
             
             // Vérifier les quatre coins du joueur avec la marge
             const points = [
@@ -353,8 +414,27 @@
             return true;
         }
 
+        // Vérifier si une grille est accessible
+        function isGridAccessible(gridX, gridY) {
+            if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) {
+                return false;
+            }
+            
+            return gameState.map[gridY][gridX] === TILE_TYPES.EMPTY;
+        }
+        
+        // Vérifier si une case contient une bombe
+        function hasBomb(gridX, gridY) {
+            return gameState.bombs.some(bomb => bomb.x === gridX && bomb.y === gridY);
+        }
+
         // Mettre à jour la position du joueur avec une meilleure gestion des collisions
         function updatePlayerPosition(playerData, dx, dy) {
+            // Appliquer le multiplicateur de vitesse
+            const speedMultiplier = playerData.speedMultiplier || 1;
+            dx *= speedMultiplier;
+            dy *= speedMultiplier;
+            
             // Essayer de bouger sur les deux axes indépendamment
             const newX = playerData.x + dx;
             const newY = playerData.y + dy;
@@ -470,6 +550,12 @@
             
             // Mettre à jour les explosions
             updateExplosions();
+            
+            // Mettre à jour les bonus (expiration)
+            updateBonuses();
+            
+            // Vérifier les bonus collectés
+            checkBonusCollection();
         }
 
         // Dessiner le jeu
@@ -540,6 +626,9 @@
                 }
             }
             
+            // Dessiner les bonus
+            renderBonuses();
+            
             // Dessiner les explosions
             renderExplosions();
             
@@ -579,9 +668,15 @@
             }
         }
 
+        //--------------------------------------------------
+        // LOGIQUE DE L'IA AMÉLIORÉE
+        //--------------------------------------------------
+
         // Démarrer l'IA
         function startAI() {
             if (aiMoveInterval) clearInterval(aiMoveInterval);
+            
+            log("IA activée");
             
             aiMoveInterval = setInterval(() => {
                 if (!gameState.gameStarted || !aiMode) return;
@@ -592,12 +687,12 @@
                     return;
                 }
                 
-                // Logique de mouvement de l'IA
+                // Logique de mouvement de l'IA améliorée
                 moveAI(aiPlayer);
                 
-                // Possibilité de placer une bombe (aléatoirement)
-                if (Math.random() < 0.1) { // 10% de chance à chaque mise à jour
-                    placeAIBomb(aiPlayer);
+                // Possibilité de placer une bombe
+                if (Math.random() < AI_BOMB_PROBABILITY) {
+                    tryPlaceAIBomb(aiPlayer);
                 }
             }, AI_MOVE_DELAY);
         }
@@ -626,15 +721,23 @@
                     y: aiPlayer.y
                 });
                 
+                updateDebugInfo("Recentrage");
                 return; // Ne pas faire d'autre mouvement pour ce tour
+            }
+            
+            // Vérifier s'il y a un bonus à collecter à cette position
+            if (getBonusAt(gridX, gridY)) {
+                collectBonus(aiPlayerId, getBonusAt(gridX, gridY));
+                updateDebugInfo("Bonus collecté!");
+                return;
             }
             
             // Directions possibles: haut, bas, gauche, droite
             const directions = [
-                { dx: 0, dy: -PLAYER_SPEED, name: 'haut' },
-                { dx: 0, dy: PLAYER_SPEED, name: 'bas' },
-                { dx: -PLAYER_SPEED, dy: 0, name: 'gauche' },
-                { dx: PLAYER_SPEED, dy: 0, name: 'droite' }
+                { dx: 0, dy: -1, name: 'haut' },
+                { dx: 0, dy: 1, name: 'bas' },
+                { dx: -1, dy: 0, name: 'gauche' },
+                { dx: 1, dy: 0, name: 'droite' }
             ];
             
             // Filtrer les directions valides (sans obstacle)
@@ -647,7 +750,8 @@
                     // On vérifie si la nouvelle case est accessible
                     return newGridX >= 0 && newGridX < GRID_SIZE && 
                            newGridY >= 0 && newGridY < GRID_SIZE && 
-                           gameState.map[newGridY][newGridX] === TILE_TYPES.EMPTY;
+                           gameState.map[newGridY][newGridX] === TILE_TYPES.EMPTY &&
+                           !hasBomb(newGridX, newGridY);
                 }
                 
                 // Si on reste sur la même case, c'est valide
@@ -658,112 +762,114 @@
             if (validDirections.length === 0) {
                 // Si l'IA est bloquée, essayer de poser une bombe pour se frayer un chemin
                 if (Math.random() < 0.5) {
-                    placeAIBomb(aiPlayer);
+                    tryPlaceAIBomb(aiPlayer);
                 }
+                updateDebugInfo("Bloqué");
                 return;
             }
             
             // Vérifier s'il y a des bombes à proximité
-            const nearbyBomb = gameState.bombs.some(bomb => {
-                const bombDistance = Math.sqrt(
-                    Math.pow((bomb.x * TILE_SIZE + TILE_SIZE / 2 - aiPlayer.x) / TILE_SIZE, 2) + 
-                    Math.pow((bomb.y * TILE_SIZE + TILE_SIZE / 2 - aiPlayer.y) / TILE_SIZE, 2)
-                );
-                return bombDistance < 2;
-            });
+            const nearbyBomb = isNearExplosion(gridX, gridY);
             
             let chosenDirection;
             
             // Si une bombe est à proximité, fuir
             if (nearbyBomb) {
-                // Trier les directions valides par distance aux bombes
-                const safeDirections = validDirections.map(dir => {
-                    const newPos = {
-                        x: aiPlayer.x + dir.dx * 3,
-                        y: aiPlayer.y + dir.dy * 3
-                    };
-                    
-                    // Calculer la distance minimale à toutes les bombes depuis cette nouvelle position
-                    let minBombDistance = Infinity;
-                    gameState.bombs.forEach(bomb => {
-                        const bombPos = {
-                            x: bomb.x * TILE_SIZE + TILE_SIZE / 2,
-                            y: bomb.y * TILE_SIZE + TILE_SIZE / 2
-                        };
-                        const distance = Math.sqrt(
-                            Math.pow((bombPos.x - newPos.x) / TILE_SIZE, 2) + 
-                            Math.pow((bombPos.y - newPos.y) / TILE_SIZE, 2)
-                        );
-                        minBombDistance = Math.min(minBombDistance, distance);
+                chosenDirection = getBestEscapeDirection(gridX, gridY, validDirections);
+                updateDebugInfo("Fuite de bombe");
+            } else {
+                // Vérifier s'il y a un bonus à proximité
+                const nearestBonus = findNearestBonus(gridX, gridY);
+                
+                if (nearestBonus && nearestBonus.distance < 5) {
+                    // Aller vers le bonus
+                    validDirections.sort((a, b) => {
+                        const distA = Math.abs((gridX + a.dx) - nearestBonus.bonus.x) + 
+                                      Math.abs((gridY + a.dy) - nearestBonus.bonus.y);
+                        const distB = Math.abs((gridX + b.dx) - nearestBonus.bonus.x) + 
+                                      Math.abs((gridY + b.dy) - nearestBonus.bonus.y);
+                        return distA - distB;
                     });
                     
-                    return {
-                        direction: dir,
-                        safety: minBombDistance
-                    };
-                }).sort((a, b) => b.safety - a.safety);
-                
-                // Prendre la direction la plus sûre
-                chosenDirection = safeDirections.length > 0 ? safeDirections[0].direction : validDirections[0];
-            } else {
-                // Comportement normal: se diriger vers le joueur humain
-                const player = gameState.players['player1'];
-                
-                if (player && player.alive) {
-                    // Intelligence simple: chercher à s'approcher du joueur humain
-                    const distanceToPlayer = Math.sqrt(
-                        Math.pow((player.x - aiPlayer.x) / TILE_SIZE, 2) + 
-                        Math.pow((player.y - aiPlayer.y) / TILE_SIZE, 2)
-                    );
+                    chosenDirection = validDirections[0];
+                    updateDebugInfo("Vers bonus");
+                } else {
+                    // Comportement normal: se diriger vers le joueur humain
+                    const player = gameState.players['player1'];
                     
-                    if (distanceToPlayer < 3 && Math.random() < 0.7) {
-                        // Échapper au joueur (aller dans la direction opposée)
-                        const playerDirX = player.x > aiPlayer.x ? 1 : -1;
-                        const playerDirY = player.y > aiPlayer.y ? 1 : -1;
+                    if (player && player.alive) {
+                        // Éviter les mouvements d'aller-retour
+                        const nonBacktrackingMoves = validDirections.filter(dir =>
+                            !(dir.dx === -aiLastMove.dx && dir.dy === -aiLastMove.dy)
+                        );
                         
-                        // Chercher une direction qui s'éloigne du joueur
-                        const escapeDirs = validDirections.filter(dir => {
-                            return (dir.dx * playerDirX <= 0) || (dir.dy * playerDirY <= 0);
-                        });
+                        const movesToConsider = nonBacktrackingMoves.length > 0 ? 
+                                               nonBacktrackingMoves : validDirections;
                         
-                        chosenDirection = escapeDirs.length > 0 
-                            ? escapeDirs[Math.floor(Math.random() * escapeDirs.length)]
-                            : validDirections[Math.floor(Math.random() * validDirections.length)];
+                        // Intelligence simple: chercher à s'approcher du joueur humain
+                        const distanceToPlayer = Math.sqrt(
+                            Math.pow((player.x - aiPlayer.x) / TILE_SIZE, 2) + 
+                            Math.pow((player.y - aiPlayer.y) / TILE_SIZE, 2)
+                        );
+                        
+                        if (distanceToPlayer < 3 && Math.random() < 0.3) {
+                            // Échapper au joueur s'il est trop proche (parfois)
+                            const playerDirX = player.x > aiPlayer.x ? 1 : -1;
+                            const playerDirY = player.y > aiPlayer.y ? 1 : -1;
                             
-                        // Forte chance de poser une bombe
-                        if (Math.random() < 0.3) {
-                            placeAIBomb(aiPlayer);
+                            // Chercher une direction qui s'éloigne du joueur
+                            const escapeDirs = movesToConsider.filter(dir => {
+                                return (dir.dx * playerDirX <= 0) || (dir.dy * playerDirY <= 0);
+                            });
+                            
+                            chosenDirection = escapeDirs.length > 0 
+                                ? escapeDirs[Math.floor(Math.random() * escapeDirs.length)]
+                                : movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
+                                
+                            updateDebugInfo("Évite joueur");
+                            
+                            // Forte chance de poser une bombe près du joueur
+                            if (distanceToPlayer < 2 && Math.random() < 0.6) {
+                                tryPlaceAIBomb(aiPlayer);
+                            }
+                        } else {
+                            // Se déplacer vers le joueur
+                            movesToConsider.sort((a, b) => {
+                                const distA = Math.abs((gridX + a.dx) - Math.floor(player.x / TILE_SIZE)) + 
+                                             Math.abs((gridY + a.dy) - Math.floor(player.y / TILE_SIZE));
+                                const distB = Math.abs((gridX + b.dx) - Math.floor(player.x / TILE_SIZE)) + 
+                                             Math.abs((gridY + b.dy) - Math.floor(player.y / TILE_SIZE));
+                                return distA - distB;
+                            });
+                            
+                            // Ajouter du hasard pour que l'IA ne soit pas trop prévisible
+                            chosenDirection = Math.random() < 0.7 
+                                ? movesToConsider[0] // 70% de chance de prendre la meilleure direction
+                                : movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
+                                
+                            updateDebugInfo("Vers joueur");
                         }
                     } else {
-                        // Se déplacer vers le joueur
-                        validDirections.sort((a, b) => {
-                            const distA = Math.abs((aiPlayer.x + a.dx * 4 - player.x) / TILE_SIZE) + 
-                                         Math.abs((aiPlayer.y + a.dy * 4 - player.y) / TILE_SIZE);
-                            const distB = Math.abs((aiPlayer.x + b.dx * 4 - player.x) / TILE_SIZE) + 
-                                         Math.abs((aiPlayer.y + b.dy * 4 - player.y) / TILE_SIZE);
-                            return distA - distB;
-                        });
-                        
-                        // Ajouter du hasard pour que l'IA ne soit pas trop prévisible
-                        chosenDirection = Math.random() < 0.7 
-                            ? validDirections[0] // 70% de chance de prendre la meilleure direction
-                            : validDirections[Math.floor(Math.random() * validDirections.length)];
+                        // Si pas de joueur, déplacement aléatoire
+                        chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+                        updateDebugInfo("Aléatoire");
                     }
-                } else {
-                    // Si pas de joueur, déplacement aléatoire
-                    chosenDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
                 }
             }
             
             // Appliquer le mouvement
-            const newX = aiPlayer.x + chosenDirection.dx;
-            const newY = aiPlayer.y + chosenDirection.dy;
+            const speedMultiplier = aiPlayer.speedMultiplier || 1;
+            const newX = aiPlayer.x + chosenDirection.dx * PLAYER_SPEED * speedMultiplier;
+            const newY = aiPlayer.y + chosenDirection.dy * PLAYER_SPEED * speedMultiplier;
             
             // Vérifier une dernière fois si la position est valide
             if (isValidPosition(newX, newY)) {
                 // Mettre à jour la position de l'IA
                 aiPlayer.x = newX;
                 aiPlayer.y = newY;
+                
+                // Mémoriser le dernier mouvement pour éviter les aller-retours
+                aiLastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
                 
                 // Synchroniser avec Firebase
                 database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
@@ -773,8 +879,103 @@
             }
         }
 
+        // Vérifier si l'IA est près d'une explosion imminente ou en cours
+        function isNearExplosion(gridX, gridY) {
+            // Vérifier les bombes à proximité qui vont bientôt exploser
+            const dangerBombs = gameState.bombs.filter(bomb => {
+                // Si la bombe va exploser dans moins de 1 seconde
+                const timeToExplode = bomb.timer - Date.now();
+                if (timeToExplode <= 1000) {
+                    // Calculer la distance
+                    const distX = Math.abs(bomb.x - gridX);
+                    const distY = Math.abs(bomb.y - gridY);
+                    // Si dans la portée potentielle
+                    return (distX <= bomb.range && distY === 0) || 
+                           (distY <= bomb.range && distX === 0);
+                }
+                return false;
+            });
+            
+            // Vérifier les explosions actives
+            const inExplosion = gameState.explosions.some(explosion => {
+                return explosion.cells.some(cell => cell.x === gridX && cell.y === gridY);
+            });
+            
+            return dangerBombs.length > 0 || inExplosion;
+        }
+
+        // Obtenir la meilleure direction pour fuir
+        function getBestEscapeDirection(gridX, gridY, validDirections) {
+            // Calculer un score pour chaque direction basé sur les bombes et explosions
+            const directionScores = validDirections.map(dir => {
+                const newGridX = gridX + dir.dx;
+                const newGridY = gridY + dir.dy;
+                
+                // Score initial: plus c'est loin des bombes, mieux c'est
+                let score = 10;
+                
+                // Réduire le score si proche d'une bombe ou dans sa ligne/colonne
+                gameState.bombs.forEach(bomb => {
+                    const distX = Math.abs(bomb.x - newGridX);
+                    const distY = Math.abs(bomb.y - newGridY);
+                    
+                    // Si dans la ligne ou colonne d'une bombe
+                    if ((distX === 0 && distY <= bomb.range) || 
+                        (distY === 0 && distX <= bomb.range)) {
+                        score -= 5;
+                    }
+                    
+                    // Si très proche d'une bombe
+                    if (distX + distY <= 2) {
+                        score -= 3;
+                    }
+                });
+                
+                // Réduire encore plus si dans une explosion active
+                const inExplosion = gameState.explosions.some(explosion => {
+                    return explosion.cells.some(cell => cell.x === newGridX && cell.y === newGridY);
+                });
+                
+                if (inExplosion) {
+                    score -= 10;
+                }
+                
+                return { direction: dir, score: score };
+            });
+            
+            // Trier par score (meilleur score en premier)
+            directionScores.sort((a, b) => b.score - a.score);
+            
+            // Retourner la meilleure direction
+            return directionScores[0].direction;
+        }
+
+        // Trouver le bonus le plus proche
+        function findNearestBonus(gridX, gridY) {
+            let nearestBonus = null;
+            let minDistance = Infinity;
+            
+            for (const bonus of gameState.bonuses) {
+                const distance = Math.abs(bonus.x - gridX) + Math.abs(bonus.y - gridY);
+                
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestBonus = bonus;
+                }
+            }
+            
+            if (nearestBonus) {
+                return {
+                    bonus: nearestBonus,
+                    distance: minDistance
+                };
+            }
+            
+            return null;
+        }
+
         // L'IA place une bombe
-        function placeAIBomb(aiPlayer) {
+        function tryPlaceAIBomb(aiPlayer) {
             // Obtenir la position de la grille
             const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
             const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
@@ -821,13 +1022,106 @@
                     }
                 }
                 
-                // Seulement placer la bombe si l'IA peut s'échapper
-                if (hasEscape) {
-                    // Ajouter la bombe au jeu
+                // Vérifier s'il est stratégique de poser une bombe ici
+                const isStrategic = isStrategicToBomb(gridX, gridY);
+                
+                // Seulement placer la bombe si l'IA peut s'échapper et que c'est stratégique
+                if (hasEscape && isStrategic) {
+                    // Ajouter la bombe à Firebase
                     database.ref(`games/${gameState.roomId}/bombs`).push(newBomb);
+                    updateDebugInfo("Bombe posée");
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        // Vérifier s'il est stratégique de poser une bombe
+        function isStrategicToBomb(gridX, gridY) {
+            // Si près du joueur, c'est stratégique
+            const player = gameState.players['player1'];
+            if (player && player.alive) {
+                const playerGridX = Math.floor(player.x / TILE_SIZE);
+                const playerGridY = Math.floor(player.y / TILE_SIZE);
+                
+                const distX = Math.abs(playerGridX - gridX);
+                const distY = Math.abs(playerGridY - gridY);
+                
+                // Si le joueur est dans la portée potentielle de la bombe
+                if ((distX === 0 && distY <= 2) || (distY === 0 && distX <= 2)) {
+                    return true;
+                }
+            }
+            
+            // Si des briques peuvent être détruites, c'est aussi stratégique
+            const directions = [
+                { dx: 0, dy: -1 }, // haut
+                { dx: 0, dy: 1 },  // bas
+                { dx: -1, dy: 0 }, // gauche
+                { dx: 1, dy: 0 }   // droite
+            ];
+            
+            return directions.some(dir => {
+                const x = gridX + dir.dx;
+                const y = gridY + dir.dy;
+                
+                return (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE && 
+                       gameState.map[y][x] === TILE_TYPES.BRICK);
+            });
+        }
+
+        // Mettre à jour les infos de debug
+        function updateDebugInfo(action = "") {
+            if (!debugDiv) return;
+            
+            // Mettre à jour l'action de l'IA
+            const aiActionSpan = document.getElementById('aiAction');
+            if (aiActionSpan) {
+                aiActionSpan.textContent = action;
+            }
+            
+            // Mettre à jour les positions et stats
+            if (gameState.players) {
+                // IA
+                const ai = gameState.players[aiPlayerId];
+                if (ai) {
+                    const aiGridX = Math.floor(ai.x / TILE_SIZE);
+                    const aiGridY = Math.floor(ai.y / TILE_SIZE);
+                    
+                    const aiGridXSpan = document.getElementById('aiGridX');
+                    const aiGridYSpan = document.getElementById('aiGridY');
+                    const aiBombsSpan = document.getElementById('aiBombs');
+                    const aiPowerSpan = document.getElementById('aiPower');
+                    
+                    if (aiGridXSpan) aiGridXSpan.textContent = aiGridX;
+                    if (aiGridYSpan) aiGridYSpan.textContent = aiGridY;
+                    if (aiBombsSpan) aiBombsSpan.textContent = ai.maxBombs;
+                    if (aiPowerSpan) aiPowerSpan.textContent = ai.bombRange;
+                }
+                
+                // Joueur
+                const player = gameState.players['player1'];
+                if (player) {
+                    const playerGridX = Math.floor(player.x / TILE_SIZE);
+                    const playerGridY = Math.floor(player.y / TILE_SIZE);
+                    
+                    const playerGridXSpan = document.getElementById('playerGridX');
+                    const playerGridYSpan = document.getElementById('playerGridY');
+                    const playerBombsSpan = document.getElementById('playerBombs');
+                    const playerPowerSpan = document.getElementById('playerPower');
+                    
+                    if (playerGridXSpan) playerGridXSpan.textContent = playerGridX;
+                    if (playerGridYSpan) playerGridYSpan.textContent = playerGridY;
+                    if (playerBombsSpan) playerBombsSpan.textContent = player.maxBombs;
+                    if (playerPowerSpan) playerPowerSpan.textContent = player.bombRange;
                 }
             }
         }
+
+        //--------------------------------------------------
+        // GESTION DES BOMBES ET EXPLOSIONS
+        //--------------------------------------------------
 
         // Placer une bombe
         function placeBomb() {
@@ -907,6 +1201,12 @@
                     if (gameState.map[newY][newX] === TILE_TYPES.BRICK) {
                         // Mettre à jour la carte dans Firebase
                         database.ref(`games/${gameState.roomId}/map/${newY}/${newX}`).set(TILE_TYPES.EMPTY);
+                        
+                        // Possibilité de créer un bonus
+                        if (Math.random() < BONUS_PROBABILITY) {
+                            spawnBonus(newX, newY);
+                        }
+                        
                         break;
                     }
                 }
@@ -925,10 +1225,24 @@
             // Supprimer la bombe de Firebase
             if (bomb.id) {
                 database.ref(`games/${gameState.roomId}/bombs/${bomb.id}`).remove();
+            } else {
+                // Si pas d'ID (parce que ça vient d'être ajouté et pas encore synchronisé)
+                const bombRef = database.ref(`games/${gameState.roomId}/bombs`);
+                bombRef.once('value', snapshot => {
+                    snapshot.forEach(childSnapshot => {
+                        const b = childSnapshot.val();
+                        if (b.x === bomb.x && b.y === bomb.y && b.playerId === bomb.playerId) {
+                            childSnapshot.ref.remove();
+                        }
+                    });
+                });
             }
             
             // Vérifier si des joueurs sont touchés par l'explosion
             checkPlayersInExplosion(explosionCells);
+            
+            // Vérifier si des bonus sont touchés par l'explosion
+            checkBonusesInExplosion(explosionCells);
             
             // Vérifier si d'autres bombes sont touchées par l'explosion (réaction en chaîne)
             checkBombsInExplosion(explosionCells, bomb.id);
@@ -951,6 +1265,24 @@
                     // Marquer le joueur comme mort
                     database.ref(`games/${gameState.roomId}/players/${playerId}/alive`).set(false);
                 }
+            }
+        }
+
+        // Vérifier si des bonus sont touchés par l'explosion
+        function checkBonusesInExplosion(explosionCells) {
+            const bonusesToRemove = [];
+            
+            // Parcourir tous les bonus
+            for (const bonus of gameState.bonuses) {
+                // Vérifier si ce bonus est touché par l'explosion
+                if (explosionCells.some(cell => cell.x === bonus.x && cell.y === bonus.y)) {
+                    bonusesToRemove.push(bonus.id);
+                }
+            }
+            
+            // Supprimer les bonus touchés
+            for (const bonusId of bonusesToRemove) {
+                database.ref(`games/${gameState.roomId}/bonuses/${bonusId}`).remove();
             }
         }
 
@@ -1115,6 +1447,156 @@
             }
         }
 
+        //--------------------------------------------------
+        // SYSTÈME DE BONUS
+        //--------------------------------------------------
+
+        // Faire apparaître un bonus
+        function spawnBonus(x, y) {
+            // Choisir un type de bonus aléatoire
+            const bonusType = Math.floor(Math.random() * 3); // 0 = bombe+, 1 = puissance+, 2 = vitesse+
+            
+            const bonusId = generateId();
+            
+            // Créer le bonus
+            const bonus = {
+                id: bonusId,
+                type: bonusType,
+                x: x,
+                y: y,
+                expireTime: Date.now() + BONUS_DURATION
+            };
+            
+            // Ajouter le bonus à Firebase
+            database.ref(`games/${gameState.roomId}/bonuses/${bonusId}`).set(bonus);
+        }
+
+        // Obtenir un bonus à une position
+        function getBonusAt(x, y) {
+            return gameState.bonuses.find(bonus => bonus.x === x && bonus.y === y);
+        }
+
+        // Collecter un bonus
+        function collectBonus(playerId, bonus) {
+            if (!bonus) return;
+            
+            const player = gameState.players[playerId];
+            if (!player) return;
+            
+            // Appliquer l'effet du bonus
+            switch (bonus.type) {
+                case BONUS_TYPES.BOMB:
+                    player.maxBombs++;
+                    break;
+                case BONUS_TYPES.POWER:
+                    player.bombRange++;
+                    break;
+                case BONUS_TYPES.SPEED:
+                    player.speedMultiplier = (player.speedMultiplier || 1) + 0.2;
+                    break;
+            }
+            
+            // Mettre à jour le joueur dans Firebase
+            database.ref(`games/${gameState.roomId}/players/${playerId}`).update({
+                maxBombs: player.maxBombs,
+                bombRange: player.bombRange,
+                speedMultiplier: player.speedMultiplier
+            });
+            
+            // Supprimer le bonus
+            database.ref(`games/${gameState.roomId}/bonuses/${bonus.id}`).remove();
+        }
+
+        // Vérifier les bonus collectés
+        function checkBonusCollection() {
+            // Pour chaque joueur
+            for (const playerId in gameState.players) {
+                const player = gameState.players[playerId];
+                if (!player || !player.alive) continue;
+                
+                // Obtenir la position du joueur sur la grille
+                const playerGridX = Math.floor(player.x / TILE_SIZE);
+                const playerGridY = Math.floor(player.y / TILE_SIZE);
+                
+                // Vérifier s'il y a un bonus à cette position
+                const bonus = getBonusAt(playerGridX, playerGridY);
+                if (bonus) {
+                    collectBonus(playerId, bonus);
+                }
+            }
+        }
+
+        // Mettre à jour les bonus (expiration)
+        function updateBonuses() {
+            const currentTime = Date.now();
+            
+            // Supprimer les bonus expirés
+            for (const bonus of gameState.bonuses) {
+                if (bonus.expireTime && bonus.expireTime <= currentTime) {
+                    database.ref(`games/${gameState.roomId}/bonuses/${bonus.id}`).remove();
+                }
+            }
+        }
+
+        // Dessiner les bonus
+        function renderBonuses() {
+            if (!gameState.bonuses || gameState.bonuses.length === 0) return;
+            
+            for (const bonus of gameState.bonuses) {
+                // Position du bonus
+                const x = bonus.x * TILE_SIZE + TILE_SIZE/2;
+                const y = bonus.y * TILE_SIZE + TILE_SIZE/2;
+                
+                // Animation de pulsation
+                const scale = 1 + 0.1 * Math.sin(Date.now() / 300);
+                const size = TILE_SIZE * 0.6 * scale;
+                
+                // Couleur selon le type
+                let color;
+                let symbol;
+                
+                switch (bonus.type) {
+                    case BONUS_TYPES.BOMB:
+                        color = '#f5a623'; // Orange
+                        symbol = 'B';
+                        break;
+                    case BONUS_TYPES.POWER:
+                        color = '#ff5252'; // Rouge
+                        symbol = 'P';
+                        break;
+                    case BONUS_TYPES.SPEED:
+                        color = '#7ed321'; // Vert
+                        symbol = 'S';
+                        break;
+                }
+                
+                // Dessiner le cercle du bonus
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(x, y, size/2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Bordure
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, size/2, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.lineWidth = 1;
+                
+                // Symbole
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px Comic Sans MS';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(symbol, x, y);
+            }
+        }
+
+        //--------------------------------------------------
+        // GESTION DU MULTIJOUEUR
+        //--------------------------------------------------
+
         // Créer une nouvelle partie multijoueur
         function createGame() {
             log("Création d'une nouvelle partie multijoueur");
@@ -1134,6 +1616,7 @@
                 },
                 bombs: {},
                 explosions: {},
+                bonuses: {},
                 gameStarted: false
             });
             
@@ -1200,6 +1683,7 @@
                 },
                 bombs: {},
                 explosions: {},
+                bonuses: {},
                 gameStarted: true
             });
             
@@ -1225,9 +1709,10 @@
                 gameState.map = gameData.map;
                 gameState.players = gameData.players || {};
                 
-                // Convertir les objets bombs et explosions en tableaux
+                // Convertir les objets en tableaux
                 gameState.bombs = gameData.bombs ? Object.values(gameData.bombs) : [];
                 gameState.explosions = gameData.explosions ? Object.values(gameData.explosions) : [];
+                gameState.bonuses = gameData.bonuses ? Object.values(gameData.bonuses) : [];
                 
                 gameState.gameStarted = gameData.gameStarted;
                 
@@ -1279,6 +1764,7 @@
                     },
                     bombs: {},
                     explosions: {},
+                    bonuses: {},
                     gameStarted: true
                 });
                 
@@ -1308,6 +1794,7 @@
                 gameState.players = {};
                 gameState.bombs = [];
                 gameState.explosions = [];
+                gameState.bonuses = [];
                 gameState.gameStarted = false;
             }
         }
@@ -1319,6 +1806,10 @@
             window.location.href = 'index.html';
         }
 
+        //--------------------------------------------------
+        // ÉCOUTEURS D'ÉVÉNEMENTS
+        //--------------------------------------------------
+
         // Gérer les entrées clavier
         window.addEventListener('keydown', (e) => {
             gameState.keys[e.key] = true;
@@ -1326,6 +1817,11 @@
             // Touche espace pour poser une bombe
             if (e.key === ' ' && gameState.gameStarted) {
                 placeBomb();
+            }
+            
+            // Éviter le scroll de la page avec les flèches
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+                e.preventDefault();
             }
         });
 

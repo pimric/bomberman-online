@@ -6,9 +6,7 @@
     <title>Island Bomber</title>
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
     <style>
-        /* Styles communs pour tout le site Island Bomber */
-
-        /* Styles de base pour le corps de la page */
+        /* Styles pour la page d'accueil Island Bomber */
         body {
             background: linear-gradient(135deg, #0099cc, #006699);
             display: flex;
@@ -24,8 +22,7 @@
             background-blend-mode: soft-light;
         }
 
-        /* Styles pour les conteneurs */
-        .container, #gameContainer {
+        .container {
             text-align: center;
             background-color: rgba(0, 0, 0, 0.5);
             padding: 20px;
@@ -36,33 +33,65 @@
             margin: 0 auto;
         }
 
-        /* Styles pour le canvas de jeu */
-        canvas {
-            border: 4px solid #ffd700;
-            background-color: #f9e8b0; /* Sand color */
-            image-rendering: pixelated;
-            border-radius: 8px;
-        }
-
-        /* Styles pour les titres */
-        h1 {
-            font-family: 'Pacifico', cursive;
-            font-size: 36px;
-            color: #ffd700; /* Gold color for reggae vibe */
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 2px 2px 0px #000, 4px 4px 0px #006699;
-            font-weight: bold;
-        }
-
         .title {
+            font-family: 'Pacifico', cursive;
             font-size: 36px;
             color: #ffd700;
             margin: 20px 0;
             text-transform: uppercase;
             letter-spacing: 3px;
             text-shadow: 3px 3px 0px #000;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: #4ecdc4;
+            margin-bottom: 30px;
+        }
+
+        .play-button {
+            display: inline-block;
+            background: linear-gradient(to bottom, #ff9900, #ff6600);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 4px 0 #cc5200;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .play-button:hover {
+            background: linear-gradient(to bottom, #ffaa33, #ff7722);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #cc5200;
+        }
+
+        .play-button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #cc5200;
+        }
+
+        .game-status {
+            background-color: #333;
+            color: #4ecdc4;
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .info-box {
+            background-color: #222;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+            text-align: left;
         }
 
         h2, .section-title {
@@ -77,120 +106,6 @@
             margin-top: 15px;
         }
 
-        .subtitle {
-            font-size: 18px;
-            color: #4ecdc4;
-            margin-bottom: 30px;
-        }
-
-        /* Styles pour les contrôles de salle */
-        #roomControls, .control-group {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: rgba(34, 139, 34, 0.7); /* Forest green with opacity */
-            border-radius: 10px;
-            border: 2px dashed #ffd700;
-        }
-
-        /* Styles pour les boutons */
-        button, .play-button, .gameButton {
-            background: linear-gradient(to bottom, #ff9900, #ff6600);
-            color: white;
-            border: none;
-            padding: 10px 18px;
-            margin: 0 8px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            font-weight: bold;
-            font-size: 14px;
-            text-transform: uppercase;
-            box-shadow: 0 4px 0 #cc5200;
-            transition: all 0.2s;
-            text-decoration: none;
-        }
-
-        button:hover, .play-button:hover, .gameButton:hover {
-            background: linear-gradient(to bottom, #ffaa33, #ff7722);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 0 #cc5200;
-        }
-
-        button:active, .play-button:active, .gameButton:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #cc5200;
-        }
-
-        .play-button {
-            display: inline-block;
-            padding: 15px 30px;
-            font-size: 20px;
-            margin: 20px 0;
-        }
-
-        .gameButton {
-            padding: 12px 20px;
-            font-size: 16px;
-            margin: 8px;
-            letter-spacing: 1px;
-        }
-
-        /* Styles pour les champs de saisie */
-        input {
-            background-color: #ffe6cc;
-            color: #663300;
-            border: 2px solid #ff9900;
-            padding: 10px;
-            border-radius: 8px;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            font-size: 14px;
-            width: 150px;
-        }
-
-        input::placeholder {
-            color: #cc8800;
-        }
-
-        /* Styles pour les effets d'explosion */
-        .explosion-animation {
-            position: absolute;
-            background-color: rgba(255, 165, 0, 0.7);
-            border-radius: 50%;
-            animation: explode 0.5s ease-out;
-        }
-
-        @keyframes explode {
-            0% { transform: scale(0.5); opacity: 1; }
-            100% { transform: scale(1.5); opacity: 0; }
-        }
-
-        /* Styles pour les infos de jeu et statut */
-        #gameInfo, .game-status {
-            background-color: rgba(255, 215, 0, 0.3);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-weight: bold;
-            text-shadow: 1px 1px 0px #000;
-            letter-spacing: 1px;
-        }
-
-        .game-status {
-            background-color: #333;
-            color: #4ecdc4;
-            margin-top: 20px;
-        }
-
-        /* Styles pour les boites d'information */
-        .info-box {
-            background-color: #222;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 30px 0;
-            text-align: left;
-        }
-
-        /* Styles pour les groupes de contrôles */
         .controls {
             display: flex;
             flex-wrap: wrap;
@@ -201,30 +116,27 @@
         .control-group {
             margin: 10px;
             min-width: 200px;
-            background-color: #333;
+            background-color: rgba(34, 139, 34, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px dashed #ffd700;
         }
 
-        /* Styles pour le pied de page */
         .footer {
             margin-top: 40px;
             font-size: 12px;
-            color: #666;
+            color: #ffffff;
         }
 
         /* Adaptations pour les mobiles */
         @media (max-width: 600px) {
-            .container, #gameContainer {
+            .container {
                 padding: 10px;
                 width: 90%;
             }
             
-            h1, .title {
+            .title {
                 font-size: 28px;
-            }
-            
-            button, .gameButton {
-                margin: 5px;
-                padding: 8px 15px;
             }
             
             .play-button {
@@ -233,10 +145,6 @@
             
             .control-group {
                 min-width: 100%;
-            }
-            
-            canvas {
-                max-width: 100%;
             }
         }
     </style>
@@ -260,14 +168,22 @@
                 <li>Jouer en solo contre une IA</li>
                 <li>Jouer en multijoueur avec vos amis</li>
                 <li>Créer et partager des parties via un code unique</li>
+                <li>Collecter des bonus pour améliorer vos capacités</li>
             </ul>
             
             <h2 class="section-title">Comment jouer</h2>
             <div class="controls">
                 <div class="control-group">
-                    <h3>Joueur 1</h3>
-                    <p>Déplacement: Flèches</p>
+                    <h3>Joueur</h3>
+                    <p>Déplacement: Flèches directionnelles</p>
                     <p>Poser bombe: ESPACE</p>
+                </div>
+                
+                <div class="control-group">
+                    <h3>Bonus</h3>
+                    <p><span style="color: #f5a623;">●</span> Bombe+ : Augmente le nombre de bombes</p>
+                    <p><span style="color: #ff5252;">●</span> Puissance+ : Augmente la portée des explosions</p>
+                    <p><span style="color: #7ed321;">●</span> Vitesse+ : Augmente la vitesse de déplacement</p>
                 </div>
             </div>
         </div>
