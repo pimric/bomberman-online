@@ -65,6 +65,10 @@ const gridOf = (page, id) => page.evaluate(id => {
             () => gameState.gameStarted === true && gameState.players.player1 && gameState.players.player2,
             { timeout: 10000 })));
         check('Les deux onglets voient la partie démarrée avec 2 joueurs', true);
+        // Décompte 3-2-1 : personne ne bouge avant la fin
+        const blocked = await A.page.evaluate(() => countdownActive());
+        check('Décompte actif au démarrage', blocked);
+        await Promise.all([A, B].map(P => P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 })));
 
         const a1 = await gridOf(A.page, 'player1'), a2 = await gridOf(A.page, 'player2');
         const b1 = await gridOf(B.page, 'player1'), b2 = await gridOf(B.page, 'player2');
@@ -207,6 +211,7 @@ async function scenarioSolo() {
     try {
         await P.page.click('#singlePlayerBtn');
         await P.page.waitForFunction(() => gameState.gameStarted && gameState.players[aiPlayerId], { timeout: 10000 });
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
         room = await P.page.evaluate(() => gameState.roomId);
         const start = await gridOf(P.page, 'playerAI');
         await P.page.evaluate(() => {

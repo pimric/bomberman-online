@@ -173,6 +173,10 @@ def main():
             w, h = img.size
             m = round(min(w, h) * 0.05)
             img = img.crop((m, m, w - m, h - m))
+            # Étirée pile au carré : fit() gardait les proportions (tuile
+            # source 289x297) et laissait une bande transparente = grille
+            sprites[name] = img.resize((SPRITE, SPRITE), Image.LANCZOS)
+            continue
         sprites[name] = fit(img)
 
     obj = Image.open(os.path.join(SRC, 'objets.png')).convert('RGB')

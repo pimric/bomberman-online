@@ -29,6 +29,7 @@
             gap: 12px;
         }
         .topbar .logo { font-size: clamp(28px, 5vw, 40px); }
+        .topbar-actions { display: flex; gap: 8px; }
 
         /* Menu de choix de partie */
         #roomControls {
@@ -37,6 +38,31 @@
         }
         #roomControls h2 { margin: 0 0 14px; }
         .solo-btn { width: 100%; }
+        .level-picker {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 12px;
+            font-weight: 700;
+            color: var(--wood);
+        }
+        .level-picker button {
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 800;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 2px solid var(--sand-deep);
+            background: #fff;
+            color: var(--wood);
+            cursor: pointer;
+        }
+        .level-picker button[aria-checked="true"] {
+            background: var(--wood);
+            border-color: var(--wood);
+            color: #fff;
+        }
         .divider {
             display: flex;
             align-items: center;
@@ -127,7 +153,13 @@
             inset: 0;
             background: rgba(6, 60, 80, .55);
             backdrop-filter: blur(2px);
-            animation: fade-in .25s ease-out;
+            transition: opacity .25s ease-out;
+        }
+        /* Invisible tant que l'animation de mort n'est pas finie (classe
+           « ready » posée par updateHud) */
+        #gameControls:not(.ready) {
+            opacity: 0;
+            pointer-events: none;
         }
         .end-card {
             position: absolute;
@@ -136,6 +168,8 @@
             transform: translate(-50%, -50%);
             width: min(360px, 86%);
             text-align: center;
+        }
+        #gameControls.ready .end-card {
             animation: pop-in .35s cubic-bezier(.2, 1.4, .4, 1);
         }
         #endTitle {
@@ -183,12 +217,21 @@
     <main class="app">
         <header class="topbar">
             <a href="index.html" class="logo">Island Bomber</a>
-            <a href="index.html" class="btn btn-small btn-ghost">Accueil</a>
+            <div class="topbar-actions">
+                <button id="soundBtn" class="btn btn-small btn-ghost" type="button" aria-pressed="true">Son : oui</button>
+                <a href="index.html" class="btn btn-small btn-ghost">Accueil</a>
+            </div>
         </header>
 
         <section id="roomControls" class="card">
             <h2 class="card-title">Choisis ta partie</h2>
             <button id="singlePlayerBtn" class="btn btn-primary btn-big solo-btn">Jouer contre l'IA</button>
+            <div class="level-picker" role="radiogroup" aria-label="Niveau de l'IA">
+                <span>Niveau :</span>
+                <button type="button" role="radio" data-level="facile">Facile</button>
+                <button type="button" role="radio" data-level="normal">Normal</button>
+                <button type="button" role="radio" data-level="difficile">Difficile</button>
+            </div>
             <div class="divider">ou entre amis</div>
             <div class="online-row">
                 <input type="text" id="roomInput" placeholder="Code de partie" autocomplete="off">
@@ -261,16 +304,35 @@
         const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
         const BOMB_OWNER_GRACE = 500; // Retard toléré avant qu'un autre onglet explose la bombe à la place de son propriétaire (ms)
 
-        // Configuration de l'IA
-        const AI_MOVE_DELAY = 200; // Délai entre les décisions de l'IA (ms) - aligné sur MOVE_DURATION pour réagir dès qu'un pas se termine
-        const AI_BOMB_PROBABILITY = 0.6; // Probabilité de poser une bombe stratégique (agressive)
+        // Configuration de l'IA, par niveau (choisi dans le menu, retenu dans
+        // le navigateur). « difficile » = l'ancien réglage unique.
+        //   moveDelay   : délai entre deux décisions (ms)
+        //   bombChance  : probabilité de poser quand c'est stratégique
+        //   wander      : probabilité de flâner au hasard au lieu de chasser
+        //   bonusRadius : distance max à laquelle elle va chercher un bonus
+        const AI_LEVELS = {
+            facile:    { label: 'Facile',    moveDelay: 380, bombChance: 0.25, wander: 0.35, bonusRadius: 2 },
+            normal:    { label: 'Normal',    moveDelay: 270, bombChance: 0.45, wander: 0.12, bonusRadius: 4 },
+            difficile: { label: 'Difficile', moveDelay: 200, bombChance: 0.6,  wander: 0,    bonusRadius: 5 }
+        };
+        let aiLevel = 'normal';
+        try {
+            const saved = localStorage.getItem('islandBomber.aiLevel');
+            if (AI_LEVELS[saved]) aiLevel = saved;
+        } catch (e) { /* stockage indisponible : niveau par défaut */ }
+
+        function aiSettings() {
+            return AI_LEVELS[aiLevel];
+        }
+
         // Nombre de pas que l'IA peut GARANTIR avant l'explosion de sa bombe.
         // Pire cas par pas : la case se traverse en MOVE_DURATION, mais le tick
         // de décision suivant peut tomber juste avant la fin du pas → un tick
-        // perdu. L'ancien BFS acceptait 12 pas, impossibles à faire en 3s.
-        const AI_ESCAPE_MAX_STEPS = Math.floor(
-            (BOMB_TIMER - AI_MOVE_DELAY) / (MOVE_DURATION + AI_MOVE_DELAY)
-        ); // = 7
+        // perdu. Dépend du niveau (une IA lente fuit moins loin).
+        function aiEscapeMaxSteps() {
+            const delay = aiSettings().moveDelay;
+            return Math.floor((BOMB_TIMER - delay) / (MOVE_DURATION + delay)); // difficile = 7, facile = 4
+        }
 
         // Champs de déplacement gérés localement pour les entités simulées dans
         // cet onglet (jamais réécrits par le retour Firebase, voir joinGame)
@@ -295,7 +357,8 @@
 
         // Configuration des bonus
         const BONUS_PROBABILITY = 0.5; // 50% de chance qu'un tonneau détruit laisse un bonus
-        const BONUS_DURATION = 15000; // Les bonus restent 15 secondes sur la carte
+        // Les bonus restent au sol jusqu'à être ramassés ou brûlés (plus
+        // d'expiration : choix de jeu classique)
 
         // Types de bonus
         const BONUS_TYPES = {
@@ -630,7 +693,9 @@
 
             // Démarrer un nouveau pas de grille si le joueur n'est pas déjà en train
             // d'en traverser un (une touche = une case, pas de mouvement libre)
-            if (gameState.keys['ArrowUp']) {
+            if (countdownActive()) {
+                // décompte 3-2-1 : pas de déplacement
+            } else if (gameState.keys['ArrowUp']) {
                 stepEntityOnGrid(player, 0, -1, now);
             } else if (gameState.keys['ArrowDown']) {
                 stepEntityOnGrid(player, 0, 1, now);
@@ -693,7 +758,7 @@
             // l'instant de l'explosion (entrer dans une flamme active = mort)
             checkPlayersInFlames();
 
-            // Mettre à jour les bonus (expiration)
+            // Purger d'éventuels bonus hérités d'anciennes parties (expireTime)
             updateBonuses();
 
             // Vérifier les bonus collectés
@@ -714,15 +779,24 @@
             ctx.clearRect(0, 0, VIEW_SIZE, VIEW_SIZE);
             renderSea();
 
+            const now = Date.now();
             ctx.save();
             ctx.translate(BOARD_MARGIN, BOARD_MARGIN);
+            // Petite secousse à chaque explosion
+            if (now < fx.shakeUntil) {
+                ctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+            }
             if (!gameState.map || gameState.map.length === 0) {
                 // Pas encore de partie : l'île vide, le menu est dans la page
                 renderEmptyIsland();
             } else {
                 renderBoard();
+                renderParticles(now);
+                renderDeaths(now);
             }
             ctx.restore();
+
+            if (gameState.gameStarted) renderCountdown(now);
         }
 
         // Mer : fond animé + une rangée de tuiles d'eau dont l'écume est
@@ -960,13 +1034,13 @@
             }
 
             aiMoveInterval = setInterval(() => {
-                if (!aiMode || !gameState.gameStarted) return;
+                if (!aiMode || !gameState.gameStarted || countdownActive()) return;
 
                 const aiPlayer = gameState.players[aiPlayerId];
                 if (!aiPlayer || !aiPlayer.alive) return;
 
                 moveAI(aiPlayer);
-            }, AI_MOVE_DELAY);
+            }, aiSettings().moveDelay);
         }
 
         // Déplacer l'IA - comportement reconstruit : décision de bombe et
@@ -1061,7 +1135,7 @@
                 // Sinon, aller chercher un bonus proche
                 const nearestBonus = findNearestBonus(gridX, gridY);
 
-                if (nearestBonus && nearestBonus.distance < 5) {
+                if (nearestBonus && nearestBonus.distance <= aiSettings().bonusRadius) {
                     safeDirections.sort((a, b) => {
                         const distA = Math.abs((gridX + a.dx) - nearestBonus.bonus.x) +
                                       Math.abs((gridY + a.dy) - nearestBonus.bonus.y);
@@ -1076,7 +1150,11 @@
                     // Comportement normal: se diriger vers le joueur humain
                     const player = gameState.players['player1'];
 
-                    if (player && player.alive) {
+                    if (player && player.alive && Math.random() < aiSettings().wander) {
+                        // Niveaux faciles : flâne de temps en temps au lieu de chasser
+                        chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
+                        updateDebugInfo("Flâne");
+                    } else if (player && player.alive) {
                         // Éviter les mouvements d'aller-retour
                         const nonBacktrackingMoves = safeDirections.filter(dir =>
                             !(dir.dx === -aiLastMove.dx && dir.dy === -aiLastMove.dy)
@@ -1287,7 +1365,7 @@
 
                 // Chance de base de poser la bombe même quand c'est stratégique,
                 // pour ne pas être 100% déterministe/prévisible
-                if (Math.random() > AI_BOMB_PROBABILITY) return false;
+                if (Math.random() > aiSettings().bombChance) return false;
 
                 // Créer la référence d'abord pour connaître la vraie clé Firebase
                 const bombRef = database.ref(`games/${gameState.roomId}/bombs`).push();
@@ -1365,7 +1443,7 @@
                 const visited = new Set([`${gridX},${gridY}`]);
                 let queue = [{ x: gridX, y: gridY }];
 
-                for (let depth = 0; depth < AI_ESCAPE_MAX_STEPS && queue.length > 0; depth++) {
+                for (let depth = 0; depth < aiEscapeMaxSteps() && queue.length > 0; depth++) {
                     const nextQueue = [];
                     for (const node of queue) {
                         for (const dir of directions) {
@@ -1458,6 +1536,7 @@
         // Placer une bombe
         function placeBomb() {
             if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
+            if (countdownActive()) return;
             
             const player = gameState.players[gameState.playerId];
             if (!player || !player.alive) return;
@@ -2058,7 +2137,7 @@
                 type: bonusType,
                 x: x,
                 y: y,
-                expireTime: Date.now() + BONUS_DURATION
+                expireTime: null
             };
             
             // Ajouter le bonus à Firebase
@@ -2094,6 +2173,7 @@
             // qui vient de se passer. Purement local : on ne l'affiche que pour
             // le joueur humain, pas pour l'IA, pour ne pas polluer l'écran.
             if (playerId === gameState.playerId) {
+                sfx('bonus');
                 gameState.floatingTexts.push({
                     text: BONUS_LABELS[bonus.type] || 'Bonus !',
                     x: bonus.x * TILE_SIZE + TILE_SIZE / 2,
@@ -2289,6 +2369,7 @@
             // apparaissait alors au milieu de la carte au lieu du coin.
             gameState.players = {};
             aiHistory = [];
+            gameState.gameStarted = false;
         }
 
         // Créer une partie solo contre l'IA
@@ -2319,7 +2400,7 @@
             
             // Rejoindre la partie
             joinGame(roomId, 'player1');
-            gameInfo.textContent = `Partie solo contre l'IA - Vous êtes le joueur rouge`;
+            gameInfo.textContent = `Partie solo contre l'IA (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
             
             // Démarrer l'IA
             startAI();
@@ -2418,12 +2499,15 @@
 
                 gameState.bonuses = toArray(gameData.bonuses);
                 
+                if (gameData.gameStarted && !gameState.gameStarted) {
+                    startCountdown();
+                }
                 gameState.gameStarted = gameData.gameStarted;
                 
                 // Afficher un message quand le jeu commence
                 if (gameState.gameStarted) {
                     if (aiMode) {
-                        gameInfo.textContent = `Partie solo contre l'IA - Vous êtes le joueur rouge`;
+                        gameInfo.textContent = `Partie solo contre l'IA (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
                     } else if (gameData.players.player1 && gameData.players.player2) {
                         gameInfo.textContent = `Partie en ligne - Vous êtes le joueur ${playerId === 'player1' ? 'rouge' : 'bleu'}`;
                     }
@@ -2487,7 +2571,7 @@
                 
                 // Rejoindre la partie
                 joinGame(roomId, 'player1');
-                gameInfo.textContent = `Partie solo contre l'IA - Vous êtes le joueur rouge`;
+                gameInfo.textContent = `Partie solo contre l'IA (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
                 
                 // Démarrer l'IA
                 startAI();
@@ -2588,6 +2672,7 @@
         } else {
             console.error("Élément singlePlayerBtn non trouvé");
         }
+
         
         const restartBtn = document.getElementById('restartBtn');
         if (restartBtn) {
@@ -2613,6 +2698,227 @@
 
         // Boucle de jeu principale
         //--------------------------------------------------
+        // SONS (générés par WebAudio, aucun fichier)
+        //--------------------------------------------------
+        let audioCtx = null;
+        let soundOn = true;
+        try { soundOn = localStorage.getItem('islandBomber.sound') !== 'off'; } catch (e) { /* défaut : activé */ }
+
+        // Le navigateur n'autorise le son qu'après une action de l'utilisateur
+        function unlockAudio() {
+            if (!audioCtx) {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                audioCtx = new Ctx();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+        window.addEventListener('keydown', unlockAudio);
+        window.addEventListener('pointerdown', unlockAudio);
+
+        function tone(freq, start, duration, { type = 'sine', gain = 0.2, endFreq = null } = {}) {
+            const t0 = audioCtx.currentTime + start;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, t0);
+            if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, t0 + duration);
+            g.gain.setValueAtTime(gain, t0);
+            g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+            osc.connect(g).connect(audioCtx.destination);
+            osc.start(t0);
+            osc.stop(t0 + duration + 0.02);
+        }
+
+        function noiseBurst(duration, gain) {
+            const t0 = audioCtx.currentTime;
+            const len = Math.floor(audioCtx.sampleRate * duration);
+            const buffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+            const src = audioCtx.createBufferSource();
+            src.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1400, t0);
+            filter.frequency.exponentialRampToValueAtTime(160, t0 + duration);
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(gain, t0);
+            g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+            src.connect(filter).connect(g).connect(audioCtx.destination);
+            src.start(t0);
+        }
+
+        const lastSfx = {};
+        function sfx(name) {
+            if (!soundOn || !audioCtx || audioCtx.state !== 'running') return;
+            // Anti-rafale : une réaction en chaîne ne doit pas empiler 5 sons
+            const now = performance.now();
+            if (now - (lastSfx[name] || 0) < 60) return;
+            lastSfx[name] = now;
+
+            switch (name) {
+                case 'place': tone(190, 0, 0.12, { gain: 0.3, endFreq: 90 }); break;
+                case 'boom':
+                    noiseBurst(0.55, 0.45);
+                    tone(70, 0, 0.35, { gain: 0.4, endFreq: 35 });
+                    break;
+                case 'bonus':
+                    [660, 880, 1320].forEach((f, i) => tone(f, i * 0.07, 0.12, { type: 'triangle', gain: 0.15 }));
+                    break;
+                case 'death': tone(620, 0, 0.55, { type: 'square', gain: 0.08, endFreq: 140 }); break;
+                case 'beep': tone(440, 0, 0.12, { type: 'triangle', gain: 0.2 }); break;
+                case 'go': tone(880, 0, 0.3, { type: 'triangle', gain: 0.22 }); break;
+                case 'win':
+                    [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.12, 0.22, { type: 'triangle', gain: 0.18 }));
+                    break;
+                case 'lose':
+                    [392, 330, 262].forEach((f, i) => tone(f, i * 0.18, 0.3, { type: 'triangle', gain: 0.18 }));
+                    break;
+            }
+        }
+
+        //--------------------------------------------------
+        // ANIMATIONS : décompte, éclats de tonneau, mort, secousse
+        //--------------------------------------------------
+        const COUNTDOWN_MS = 3000;
+        let countdownEnd = 0;
+        let lastCountdownStep = null;
+
+        function startCountdown() {
+            countdownEnd = Date.now() + COUNTDOWN_MS;
+            lastCountdownStep = null;
+        }
+
+        function countdownActive() {
+            return Date.now() < countdownEnd;
+        }
+
+        // Événements déduits de l'état (marche pareil pour les actions
+        // locales et distantes) : nouvelle bombe, nouvelle explosion, tonneau
+        // détruit, joueur mort. Réinitialisé à chaque nouvelle partie pour ne
+        // pas rejouer les sons de tout l'état initial.
+        const fx = { roomId: null, bombs: new Set(), explosions: new Set(), map: null, alive: {}, particles: [], deaths: [], shakeUntil: 0 };
+
+        function detectEvents(now) {
+            const bombIds = new Set(gameState.bombs.map(b => b.id));
+            const explosionIds = new Set(gameState.explosions.map(e => e.id));
+            const fresh = fx.roomId !== gameState.roomId;
+
+            if (!fresh) {
+                if ([...bombIds].some(id => !fx.bombs.has(id))) sfx('place');
+                if ([...explosionIds].some(id => !fx.explosions.has(id))) {
+                    sfx('boom');
+                    fx.shakeUntil = now + 180;
+                }
+                // Tonneaux détruits : éclats de bois
+                if (fx.map && gameState.map) {
+                    for (let y = 0; y < GRID_SIZE; y++) {
+                        for (let x = 0; x < GRID_SIZE; x++) {
+                            if (fx.map[y] && fx.map[y][x] === TILE_TYPES.BRICK && gameState.map[y][x] === TILE_TYPES.EMPTY) {
+                                spawnDebris(x, y, now);
+                            }
+                        }
+                    }
+                }
+                // Morts : le joueur s'envole en tourbillon
+                for (const id in gameState.players) {
+                    const p = gameState.players[id];
+                    if (fx.alive[id] && p && !p.alive) {
+                        const a = playerAnim[id] || { x: p.x, y: p.y, dir: 'down' };
+                        fx.deaths.push({ id, x: a.x, y: a.y, dir: a.dir, start: now });
+                        sfx('death');
+                    }
+                }
+            } else {
+                fx.particles = [];
+                fx.deaths = [];
+            }
+
+            fx.roomId = gameState.roomId;
+            fx.bombs = bombIds;
+            fx.explosions = explosionIds;
+            fx.map = gameState.map ? gameState.map.map(row => row.slice()) : null;
+            fx.alive = {};
+            for (const id in gameState.players) fx.alive[id] = !!(gameState.players[id] && gameState.players[id].alive);
+        }
+
+        function spawnDebris(x, y, now) {
+            const cx = x * TILE_SIZE + TILE_SIZE / 2;
+            const cy = y * TILE_SIZE + TILE_SIZE / 2;
+            for (let i = 0; i < 7; i++) {
+                const angle = (Math.PI * 2 * i) / 7 + Math.random() * 0.5;
+                const speed = 40 + Math.random() * 50; // px/s
+                fx.particles.push({
+                    x: cx, y: cy,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 10,
+                    size: 4 + Math.random() * 4,
+                    color: Math.random() < 0.3 ? '#9aa0a6' : (Math.random() < 0.5 ? '#a0652e' : '#7b4a1f'),
+                    start: now, life: 550
+                });
+            }
+        }
+
+        function renderParticles(now) {
+            fx.particles = fx.particles.filter(p => now - p.start < p.life);
+            for (const p of fx.particles) {
+                const t = (now - p.start) / 1000;
+                const k = (now - p.start) / p.life;
+                ctx.save();
+                ctx.globalAlpha = 1 - k;
+                ctx.translate(p.x + p.vx * t, p.y + p.vy * t);
+                ctx.rotate(p.rot + p.vr * t);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66);
+                ctx.restore();
+            }
+        }
+
+        const DEATH_MS = 900;
+        function renderDeaths(now) {
+            fx.deaths = fx.deaths.filter(d => now - d.start < DEATH_MS);
+            if (!spritesReady()) return;
+            for (const d of fx.deaths) {
+                const t = (now - d.start) / DEATH_MS;
+                const size = TILE_SIZE * 1.25 * (1 - 0.5 * t);
+                ctx.save();
+                ctx.globalAlpha = 1 - t;
+                // monte en tournant
+                const rise = -TILE_SIZE * 0.9 * t;
+                drawSprite(`${skinOf(d.id)}_${d.dir}_0`, d.x, d.y + rise, size, size, t * Math.PI * 4);
+                ctx.restore();
+            }
+        }
+
+        // Grand chiffre au centre pendant le décompte, puis « Go ! »
+        function renderCountdown(now) {
+            const remaining = countdownEnd - now;
+            if (remaining < -600 || countdownEnd === 0) return;
+            const step = remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+            if (step !== lastCountdownStep) {
+                sfx(step > 0 ? 'beep' : 'go');
+                lastCountdownStep = step;
+            }
+            const label = step > 0 ? String(step) : 'Go !';
+            const phase = remaining > 0 ? 1 - ((remaining % 1000) / 1000) : (-remaining / 600);
+            const scale = 1.4 - 0.4 * Math.min(1, phase * 3);
+            ctx.save();
+            ctx.globalAlpha = remaining > 0 ? 1 : 1 - phase;
+            ctx.translate(VIEW_SIZE / 2, VIEW_SIZE / 2);
+            ctx.scale(scale, scale);
+            ctx.font = `${step > 0 ? 96 : 72}px Pacifico, cursive`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = '#8a5a2b';
+            ctx.strokeText(label, 0, 0);
+            ctx.fillStyle = '#fdf1d3';
+            ctx.fillText(label, 0, 0);
+            ctx.restore();
+        }
+
+        //--------------------------------------------------
         // INTERFACE : fiches joueurs + écran de fin
         //--------------------------------------------------
 
@@ -2634,6 +2940,7 @@
         };
 
         let lastHudKey = '';
+        let endScreenShown = false;
 
         // Mis à jour à chaque image, mais le DOM n'est réécrit que si
         // quelque chose a changé (stats, vivant/mort, partie en cours)
@@ -2667,7 +2974,14 @@
             // Écran de fin : titre et texte tirés du message de gameInfo
             // (« Victoire - … », « Défaite - … », « L'adversaire a quitté… »)
             const endScreen = document.getElementById('gameControls');
-            if (endScreen.style.display !== 'none') {
+            // L'écran de fin attend la fin des animations de mort
+            const endVisible = endScreen.style.display !== 'none' && fx.deaths.length === 0;
+            endScreen.classList.toggle('ready', endVisible);
+            if (endVisible && !endScreenShown) {
+                sfx(gameInfo.textContent.startsWith('Victoire') ? 'win' : 'lose');
+            }
+            endScreenShown = endVisible;
+            if (endVisible) {
                 const msg = gameInfo.textContent;
                 const [head, ...rest] = msg.split(' - ');
                 const title = document.getElementById('endTitle');
@@ -2681,10 +2995,38 @@
 
         function gameLoop() {
             update();
+            detectEvents(Date.now());
             render();
             updateHud();
             requestAnimationFrame(gameLoop);
         }
+
+        // Boutons son et niveau (après la déclaration de leur état plus haut)
+        // Bouton son
+        const soundBtn = document.getElementById('soundBtn');
+        function showSound() {
+            soundBtn.textContent = soundOn ? 'Son : oui' : 'Son : non';
+            soundBtn.setAttribute('aria-pressed', String(soundOn));
+        }
+        soundBtn.addEventListener('click', () => {
+            soundOn = !soundOn;
+            try { localStorage.setItem('islandBomber.sound', soundOn ? 'on' : 'off'); } catch (e) { /* non bloquant */ }
+            showSound();
+            soundBtn.blur(); // sinon Espace re-cliquerait le bouton au lieu de poser une bombe
+        });
+        showSound();
+
+        // Sélecteur de niveau de l'IA
+        const levelButtons = document.querySelectorAll('.level-picker [data-level]');
+        function showAiLevel() {
+            levelButtons.forEach(b => b.setAttribute('aria-checked', String(b.dataset.level === aiLevel)));
+        }
+        levelButtons.forEach(b => b.addEventListener('click', () => {
+            aiLevel = b.dataset.level;
+            try { localStorage.setItem('islandBomber.aiLevel', aiLevel); } catch (e) { /* non bloquant */ }
+            showAiLevel();
+        }));
+        showAiLevel();
 
         // Démarrer le jeu
         log("Démarrage de la boucle de jeu");
