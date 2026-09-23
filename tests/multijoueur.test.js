@@ -27,7 +27,7 @@ const server = http.createServer((req, res) => {
     });
 });
 
-async function openPlayer(label) {
+async function openPlayer(label, query = '') {
     const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     const errors = [];
@@ -39,7 +39,7 @@ async function openPlayer(label) {
         if (m.type() === 'error' && !t.includes('404')) errors.push(t);
         if (t.includes('MORT') || t.includes('IA fuite')) logs.push(t);
     });
-    await page.goto(`http://localhost:${PORT}/game.html`, { waitUntil: 'networkidle2' });
+    await page.goto(`http://localhost:${PORT}/game.html${query}`, { waitUntil: 'networkidle2' });
     return { label, browser, page, errors, logs };
 }
 
@@ -50,7 +50,7 @@ const gridOf = (page, id) => page.evaluate(id => {
 
 (async () => {
     await new Promise(r => server.listen(PORT, r));
-    const A = await openPlayer('A(player1)');
+    const A = await openPlayer('A(player1)', '?manches=2&maree=600');
     const B = await openPlayer('B(player2)');
 
     try {
@@ -178,10 +178,49 @@ const gridOf = (page, id) => page.evaluate(id => {
         const a1alive = await gridOf(A.page, 'player1');
         check('player1 (réfugié en ' + (safe ? `${safe.x},${safe.y}` : '?') + ') survit', a1alive.alive === true);
 
-        const infoA = await A.page.$eval('#gameInfo', e => e.textContent);
-        const infoB = await B.page.$eval('#gameInfo', e => e.textContent);
-        check('Écran de fin correct des deux côtés', infoA.includes('Victoire') && infoB.includes('Défaite'),
+        // --- Manche 1 terminée (match en 2 manches gagnantes) -------------
+        await A.page.waitForFunction(() => gameState.match && gameState.match.roundOver, { timeout: 5000 });
+        let infoA = await A.page.$eval('#gameInfo', e => e.textContent);
+        let infoB = await B.page.$eval('#gameInfo', e => e.textContent);
+        check('Fin de manche affichée des deux côtés', infoA.includes('Manche gagnée') && infoB.includes('Manche perdue'),
             `A="${infoA}" / B="${infoB}"`);
+        const endHidden = await A.page.$eval('#gameControls', e => e.style.display === 'none');
+        check('Pas d’écran de fin de match après une seule manche', endHidden);
+
+        // --- Manche 2 : nouvelle carte, joueurs replacés, score 1-0 ---------
+        await Promise.all([A, B].map(P => P.page.waitForFunction(
+            () => gameState.match && gameState.match.round === 2 && !gameState.match.roundOver, { timeout: 8000 })));
+        const r2 = await Promise.all([A, B].map(P => P.page.evaluate(() => ({
+            scores: gameState.match.scores,
+            p1: [Math.floor(gameState.players.player1.x / TILE_SIZE), Math.floor(gameState.players.player1.y / TILE_SIZE), gameState.players.player1.alive],
+            p2: [Math.floor(gameState.players.player2.x / TILE_SIZE), Math.floor(gameState.players.player2.y / TILE_SIZE), gameState.players.player2.alive],
+            countdown: countdownActive()
+        }))));
+        check('Manche 2 : score 1-0 des deux côtés',
+            r2.every(r => r.scores.player1 === 1 && r.scores.player2 === 0), JSON.stringify(r2.map(r => r.scores)));
+        check('Manche 2 : joueurs revenus vivants à leur coin',
+            r2.every(r => r.p1.join() === '0,0,true' && r.p2.join() === '14,14,true'),
+            JSON.stringify(r2.map(r => [r.p1, r.p2])));
+        check('Manche 2 : nouveau décompte', r2.every(r => r.countdown));
+
+        // --- player2 meurt encore : fin du match ----------------------------
+        await Promise.all([A, B].map(P => P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 })));
+        await B.page.evaluate(() => database.ref(`games/${gameState.roomId}/players/player2/alive`).set(false));
+        await A.page.waitForFunction(() => gameState.match && gameState.match.matchWinner, { timeout: 5000 });
+        await sleep(300);
+        infoA = await A.page.$eval('#gameInfo', e => e.textContent);
+        infoB = await B.page.$eval('#gameInfo', e => e.textContent);
+        check('Écran de fin de match correct des deux côtés',
+            infoA.includes('Victoire') && infoA.includes('2 à 0') && infoB.includes('Défaite') && infoB.includes('0 à 2'),
+            `A="${infoA}" / B="${infoB}"`);
+
+        // --- Revanche dans la même salle ------------------------------------
+        await sleep(1000); // écran de fin cliquable après l'animation de mort
+        await A.page.click('#restartBtn');
+        await Promise.all([A, B].map(P => P.page.waitForFunction(
+            () => gameState.match && gameState.match.round === 3 && !gameState.match.matchWinner, { timeout: 8000 })));
+        const rematch = await B.page.evaluate(() => gameState.match.scores);
+        check('Revanche : même salle, scores remis à 0', rematch.player1 === 0 && rematch.player2 === 0, JSON.stringify(rematch));
     } catch (e) {
         check('Déroulement du test', false, e.message);
     } finally {
@@ -196,12 +235,41 @@ const gridOf = (page, id) => page.evaluate(id => {
 
     await scenarioDeconnexion();
     await scenarioSolo();
+    await scenarioMaree();
 
     server.close();
     const failed = results.filter(r => !r.ok).length;
     console.log(`\n${results.length - failed}/${results.length} tests OK — salles de test supprimées`);
     process.exit(failed ? 1 : 0);
 })();
+
+// Marée montante : réglée à 0,5 s après le décompte. Le joueur reste
+// immobile dans son coin, qui est inondé en premier : il doit se noyer, et
+// la case doit devenir infranchissable.
+async function scenarioMaree() {
+    const P = await openPlayer('Marée', '?manches=1&maree=0.5');
+    let room = null;
+    try {
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+        const before = await P.page.evaluate(() => isFlooded(7, 7));
+        check('Marée : le centre de l’île n’est pas inondé', !before);
+        await P.page.waitForFunction(() => !gameState.players.player1.alive, { timeout: 5000 })
+            .then(() => check('Marée : le joueur resté dans son coin se noie', true))
+            .catch(() => check('Marée : le joueur resté dans son coin se noie', false));
+        const blocked = await P.page.evaluate(() => !isGridAccessible(0, 0) && isFlooded(0, 0));
+        check('Marée : case inondée infranchissable', blocked);
+        check('Marée : cause de la mort journalisée', P.logs.some(l => l.includes('noyé')), P.logs.join(' | '));
+    } catch (e) {
+        check('Déroulement du scénario marée', false, e.message);
+    } finally {
+        check('Aucune erreur JS (marée)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
+}
 
 // Fumée du mode solo : la partie démarre, l'IA bouge et pose des bombes,
 // sans erreur JS ; la salle solo est supprimée en quittant.

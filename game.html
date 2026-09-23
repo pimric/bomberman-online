@@ -128,6 +128,26 @@
         .player-card .name { font-weight: 800; line-height: 1.1; }
         .player-card .name small { display: block; font-weight: 600; color: var(--wood); }
         .player-card .stats { display: flex; gap: 8px; font-weight: 800; }
+        .pips { display: flex; gap: 3px; margin-top: 3px; }
+        .pip {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #efe0bd;
+            border: 2px solid var(--sand-deep);
+        }
+        .pip.won { background: var(--accent); border-color: var(--accent); }
+
+        .round-bar {
+            padding: 4px 16px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .22);
+            color: #fff;
+            font-weight: 800;
+            text-shadow: 0 1px 2px rgba(0, 40, 60, .5);
+        }
+        .round-bar.tide { background: var(--sunset); animation: tide-pulse 1s ease-in-out infinite; }
+        @keyframes tide-pulse { 50% { transform: scale(1.05); } }
         .player-card .stat { display: flex; align-items: center; gap: 2px; }
         .player-card .stat i { width: 20px; height: 20px; display: inline-block; }
 
@@ -241,6 +261,7 @@
         </section>
 
         <div id="gameInfo">Bienvenue sur l'île !</div>
+        <div id="roundBar" class="round-bar" hidden></div>
 
         <div class="arena">
             <aside id="hud" class="hud" aria-live="polite"></aside>
@@ -354,6 +375,7 @@
         let connectedListener = null; // écouteur .info/connected de la partie en cours
         let disconnectAlone = null;   // politique actuellement programmée côté serveur
         let lastKnownAlone = true;    // dernier état « seul humain présent » observé
+        let lastRoundKey = null;      // numéro de la manche affichée (détection de nouvelle manche)
 
         // Configuration des bonus
         const BONUS_PROBABILITY = 0.5; // 50% de chance qu'un tonneau détruit laisse un bonus
@@ -599,7 +621,7 @@
                 return false;
             }
             
-            return gameState.map[gridY][gridX] === TILE_TYPES.EMPTY;
+            return gameState.map[gridY][gridX] === TILE_TYPES.EMPTY && !isFlooded(gridX, gridY);
         }
         
         // Entités simulées par CET onglet : son joueur, plus l'IA en solo. En
@@ -618,65 +640,217 @@
             return gameState.bombs.some(bomb => bomb.x === gridX && bomb.y === gridY);
         }
 
-        // Vérifier fin de partie
-        function checkGameOver() {
-            if (!gameState.gameStarted) return false;
-            
-            // En mode IA
-            if (aiMode) {
-                const player = gameState.players['player1'];
-                const ai = gameState.players[aiPlayerId];
-                
-                // Si le joueur est mort
-                if (player && !player.alive) {
-                    if (aiMoveInterval) clearInterval(aiMoveInterval);
-                    gameInfo.textContent = `Défaite - L'IA a gagné !`;
-                    document.getElementById('gameControls').style.display = 'block';
-                    return true;
-                }
-                
-                // Si l'IA est morte
-                if (ai && !ai.alive) {
-                    if (aiMoveInterval) clearInterval(aiMoveInterval);
-                    gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
-                    document.getElementById('gameControls').style.display = 'block';
-                    return true;
-                }
-            } 
-            // En mode multijoueur
-            else {
-                const player1 = gameState.players['player1'];
-                const player2 = gameState.players['player2'];
+        //--------------------------------------------------
+        // MANCHES, SCORE ET MARÉE MONTANTE
+        //--------------------------------------------------
+        // Le match se joue en manches gagnantes. L'état est dans Firebase
+        // (games/<salle>/match) : { round, scores, roundStart, roundOver,
+        // lastWinner, matchWinner, roundsToWin, roundTime }.
+        // Autorité : l'hôte (player1, donc aussi l'onglet solo) décide de la
+        // fin de manche et lance la suivante ; les autres ne font qu'afficher.
+        const DEFAULT_ROUNDS_TO_WIN = 3;
+        const DEFAULT_ROUND_TIME = 90000;  // ms de jeu avant que la marée monte
+        const TIDE_STEP_MS = 600;          // ms entre deux cases inondées sur un côté
+        const TIDE_WARNING_MS = 1500;      // case qui clignote avant d'être inondée
+        const ROUND_END_SETTLE = 500;      // attente avant de juger (double KO possible)
+        const ROUND_PAUSE = 3200;          // pause entre deux manches
 
-                // La partie n'a démarré qu'avec les deux joueurs : si l'un
-                // manque maintenant, c'est qu'il a quitté (onDisconnect)
-                if (!player1 || !player2) {
-                    gameInfo.textContent = `L'adversaire a quitté la partie`;
-                    document.getElementById('gameControls').style.display = 'block';
-                    return true;
-                }
+        // Réglages de test par l'URL du CRÉATEUR de la partie (?manches=1&maree=5),
+        // recopiés dans l'état du match pour que tous les onglets les partagent
+        function matchSettingsFromUrl() {
+            const params = new URLSearchParams(location.search);
+            const rounds = parseInt(params.get('manches'), 10);
+            const tide = parseFloat(params.get('maree'));
+            return {
+                roundsToWin: rounds > 0 ? rounds : DEFAULT_ROUNDS_TO_WIN,
+                roundTime: tide >= 0 ? tide * 1000 : DEFAULT_ROUND_TIME
+            };
+        }
 
-                // Si les deux joueurs sont présents et que l'un est mort
-                if (player1 && player2) {
-                    if (!player1.alive) {
-                        gameInfo.textContent = gameState.playerId === 'player1' ? 
-                            `Défaite - Le joueur bleu a gagné !` : 
-                            `Victoire - Vous avez gagné !`;
-                        document.getElementById('gameControls').style.display = 'block';
-                        return true;
-                    }
-                    
-                    if (!player2.alive) {
-                        gameInfo.textContent = gameState.playerId === 'player2' ? 
-                            `Défaite - Le joueur rouge a gagné !` : 
-                            `Victoire - Vous avez gagné !`;
-                        document.getElementById('gameControls').style.display = 'block';
-                        return true;
-                    }
+        function newMatch(ids, startNow) {
+            const scores = {};
+            ids.forEach(id => { scores[id] = 0; });
+            return {
+                round: 1,
+                scores,
+                roundStart: startNow ? firebase.database.ServerValue.TIMESTAMP : null,
+                roundOver: false,
+                lastWinner: null,
+                matchWinner: null,
+                ...matchSettingsFromUrl()
+            };
+        }
+
+        // Heure du serveur Firebase : la marée et le décompte sont calés
+        // dessus pour que tous les onglets voient la même chose au même moment
+        let serverOffset = 0;
+        database.ref('.info/serverTimeOffset').on('value', s => { serverOffset = s.val() || 0; });
+        function serverNow() {
+            return Date.now() + serverOffset;
+        }
+
+        // Coins de départ
+        const SPAWNS = {
+            player1: [0, 0, '#ff6b6b'],
+            player2: [GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4'],
+            [aiPlayerId]: [GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4']
+        };
+        function spawnPlayer(id) {
+            const [x, y, color] = SPAWNS[id];
+            return createPlayer(x, y, color);
+        }
+
+        // Ordre d'inondation : anneau par anneau depuis le bord. Dans un
+        // anneau, les 4 côtés avancent EN MÊME TEMPS depuis leur coin (sens
+        // horaire) : les 4 coins de départ sont inondés au même instant, aucun
+        // joueur n'est avantagé.
+        const TIDE_STEPS = (() => {
+            const steps = {};
+            let base = 0;
+            for (let r = 0; r <= Math.floor((GRID_SIZE - 1) / 2); r++) {
+                const a = r, b = GRID_SIZE - 1 - r, len = b - a;
+                if (len === 0) { steps[`${a},${a}`] = base; break; }
+                for (let t = 0; t < len; t++) {
+                    steps[`${a + t},${a}`] = base + t;  // haut, vers la droite
+                    steps[`${b},${a + t}`] = base + t;  // droite, vers le bas
+                    steps[`${b - t},${b}`] = base + t;  // bas, vers la gauche
+                    steps[`${a},${b - t}`] = base + t;  // gauche, vers le haut
                 }
+                base += len;
             }
-            
+            return steps;
+        })();
+
+        function tideStart() {
+            const m = gameState.match;
+            if (!m || typeof m.roundStart !== 'number' || m.roundOver) return Infinity;
+            return m.roundStart + COUNTDOWN_MS + m.roundTime;
+        }
+        function floodTime(x, y) {
+            return tideStart() + TIDE_STEPS[`${x},${y}`] * TIDE_STEP_MS;
+        }
+        function isFlooded(x, y) {
+            return serverNow() >= floodTime(x, y);
+        }
+
+        function matchIds() {
+            const m = gameState.match;
+            return m && m.scores ? Object.keys(m.scores) : [];
+        }
+        function isHost() {
+            return gameState.playerId === 'player1';
+        }
+        function nameOf(id) {
+            return (PLAYER_LABELS[id] || { name: id }).name;
+        }
+        function opponentOf(id) {
+            return matchIds().find(other => other !== id);
+        }
+        function scoreText(m) {
+            const me = gameState.playerId;
+            return `${m.scores[me] || 0} à ${m.scores[opponentOf(me)] || 0}`;
+        }
+
+        function matchEndMessage(m) {
+            const w = m.matchWinner;
+            if (w === gameState.playerId) {
+                return aiMode ? `Victoire - Vous avez battu l'IA ${scoreText(m)} !` : `Victoire - Vous avez gagné ${scoreText(m)} !`;
+            }
+            const who = w === aiPlayerId ? "L'IA" : 'Le ' + nameOf(w).toLowerCase();
+            return `Défaite - ${who} a gagné ${scoreText(m)} !`;
+        }
+        function roundEndMessage(m) {
+            if (!m.lastWinner) return `Égalité - personne ne marque (${scoreText(m)})`;
+            const won = m.lastWinner === gameState.playerId;
+            return `${won ? 'Manche gagnée' : 'Manche perdue'} - ${scoreText(m)}`;
+        }
+
+        let roundEndTimer = null;
+
+        // Appelée à chaque image. Renvoie true quand le jeu doit être figé
+        // (fin de manche, fin de match, adversaire parti).
+        function checkGameOver() {
+            if (!gameState.gameStarted || !gameState.match) return false;
+            const m = gameState.match;
+            const ids = matchIds();
+            const endScreen = document.getElementById('gameControls');
+
+            // La partie n'a démarré qu'avec tous les joueurs : si l'un manque
+            // maintenant, c'est qu'il a quitté (onDisconnect)
+            if (!aiMode && ids.some(id => !gameState.players[id])) {
+                gameInfo.textContent = `L'adversaire a quitté la partie`;
+                endScreen.style.display = 'block';
+                return true;
+            }
+            if (m.matchWinner) {
+                gameInfo.textContent = matchEndMessage(m);
+                endScreen.style.display = 'block';
+                return true;
+            }
+            if (m.roundOver) {
+                gameInfo.textContent = roundEndMessage(m);
+                return true;
+            }
+
+            const alive = ids.filter(id => gameState.players[id] && gameState.players[id].alive);
+            if (alive.length <= 1 && isHost() && !roundEndTimer) {
+                // Petit délai : deux joueurs pris dans la même explosion
+                // meurent à quelques ms d'écart (chacun dans son onglet)
+                roundEndTimer = setTimeout(finishRound, ROUND_END_SETTLE);
+            }
             return false;
+        }
+
+        // Hôte : juge la manche, met à jour le score, lance la suivante
+        function finishRound() {
+            roundEndTimer = null;
+            const m = gameState.match;
+            if (!m || m.roundOver || m.matchWinner) return;
+            const alive = matchIds().filter(id => gameState.players[id] && gameState.players[id].alive);
+            if (alive.length > 1) return;
+
+            const winner = alive.length === 1 ? alive[0] : null;
+            const scores = { ...m.scores };
+            if (winner) scores[winner] = (scores[winner] || 0) + 1;
+            const matchWinner = winner && scores[winner] >= m.roundsToWin ? winner : null;
+            log(`Fin de manche ${m.round} : ${winner || 'égalité'} - scores ${JSON.stringify(scores)}`);
+
+            const roomId = gameState.roomId;
+            database.ref(`games/${roomId}/match`).update({ roundOver: true, lastWinner: winner, scores, matchWinner });
+            if (!matchWinner) {
+                setTimeout(() => { if (gameState.roomId === roomId) startRound(false); }, ROUND_PAUSE);
+            }
+        }
+
+        // Nouvelle manche (resetScores = revanche : nouveau match dans la même
+        // salle). Écrit tout en une seule mise à jour pour que les onglets
+        // voient la nouvelle carte et les joueurs au coin en même temps.
+        function startRound(resetScores) {
+            const m = gameState.match;
+            if (!m || !gameState.roomId) return;
+            const ids = matchIds();
+            const players = {};
+            const scores = {};
+            ids.forEach(id => {
+                players[id] = spawnPlayer(id);
+                scores[id] = resetScores ? 0 : (m.scores[id] || 0);
+            });
+            database.ref(`games/${gameState.roomId}`).update({
+                map: generateMap(),
+                players,
+                bombs: null,
+                explosions: null,
+                bonuses: null,
+                match: {
+                    ...m,
+                    round: m.round + 1,
+                    scores,
+                    roundOver: false,
+                    lastWinner: null,
+                    matchWinner: null,
+                    roundStart: firebase.database.ServerValue.TIMESTAMP
+                }
+            });
         }
 
         // Mettre à jour l'état du jeu
@@ -797,6 +971,32 @@
             ctx.restore();
 
             if (gameState.gameStarted) renderCountdown(now);
+            renderRoundBanner();
+        }
+
+        // Entre deux manches : résultat de la manche et score, au centre
+        function renderRoundBanner() {
+            const m = gameState.match;
+            if (!m || !m.roundOver || m.matchWinner || fx.deaths.length > 0) return;
+            const title = !m.lastWinner ? 'Égalité' : (m.lastWinner === gameState.playerId ? 'Manche gagnée' : 'Manche perdue');
+            ctx.save();
+            ctx.translate(VIEW_SIZE / 2, VIEW_SIZE / 2);
+            ctx.fillStyle = 'rgba(253, 241, 211, 0.95)';
+            ctx.strokeStyle = '#dcb46e';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.roundRect(-150, -62, 300, 124, 20);
+            ctx.fill();
+            ctx.stroke();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = !m.lastWinner ? '#8a5a2b' : (m.lastWinner === gameState.playerId ? '#2d7a2b' : '#d8611d');
+            ctx.font = '34px Pacifico, cursive';
+            ctx.fillText(title, 0, -18);
+            ctx.fillStyle = '#3b2412';
+            ctx.font = '700 20px "Baloo 2", sans-serif';
+            ctx.fillText(`Score : ${scoreText(m)}`, 0, 30);
+            ctx.restore();
         }
 
         // Mer : fond animé + une rangée de tuiles d'eau dont l'écume est
@@ -848,6 +1048,45 @@
             for (let y = 0; y < GRID_SIZE; y++) {
                 for (let x = 0; x < GRID_SIZE; x++) {
                     drawSprite('sand', x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE + 0.5);
+                }
+            }
+        }
+
+        // Cases inondées par la marée : eau pleine, liseré d'écume côté
+        // île, et clignotement bleu sur les cases qui vont être englouties
+        function renderTide() {
+            if (tideStart() === Infinity) return;
+            const now = serverNow();
+            const T = TILE_SIZE;
+            const flooded = (x, y) => x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE || now >= floodTime(x, y);
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const left = floodTime(x, y) - now;
+                    if (left <= 0) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.rect(x * T, y * T, T, T);
+                        ctx.clip();
+                        if (spritesReady()) {
+                            // sprite décalé pour garder l'écume (bord droit) hors de la case
+                            drawSprite('water', x * T + T / 2 + T * 0.3, y * T + T / 2, T * 1.6);
+                        } else {
+                            ctx.fillStyle = '#3ec6cf';
+                            ctx.fillRect(x * T, y * T, T, T);
+                        }
+                        ctx.restore();
+                        // écume là où l'eau touche encore le sable
+                        ctx.fillStyle = 'rgba(232, 251, 255, 0.85)';
+                        const f = 3 + Math.sin(Date.now() / 300 + x + y) * 1;
+                        if (!flooded(x, y - 1)) ctx.fillRect(x * T, y * T, T, f);
+                        if (!flooded(x, y + 1)) ctx.fillRect(x * T, (y + 1) * T - f, T, f);
+                        if (!flooded(x - 1, y)) ctx.fillRect(x * T, y * T, f, T);
+                        if (!flooded(x + 1, y)) ctx.fillRect((x + 1) * T - f, y * T, f, T);
+                    } else if (left < TIDE_WARNING_MS) {
+                        const blink = 0.25 + 0.2 * Math.sin(Date.now() / 90);
+                        ctx.fillStyle = `rgba(62, 198, 207, ${blink})`;
+                        ctx.fillRect(x * T, y * T, T, T);
+                    }
                 }
             }
         }
@@ -909,6 +1148,9 @@
             
             // Dessiner les bonus
             renderBonuses();
+
+            // Marée montante (recouvre les bonus engloutis)
+            renderTide();
             
             // Dessiner les explosions
             renderExplosions();
@@ -1035,6 +1277,7 @@
 
             aiMoveInterval = setInterval(() => {
                 if (!aiMode || !gameState.gameStarted || countdownActive()) return;
+                if (gameState.match && gameState.match.roundOver) return;
 
                 const aiPlayer = gameState.players[aiPlayerId];
                 if (!aiPlayer || !aiPlayer.alive) return;
@@ -1217,13 +1460,20 @@
                 return explosion.cells.some(cell => cell.x === gridX && cell.y === gridY);
             });
 
-            return dangerBombs.length > 0 || inExplosion;
+            return dangerBombs.length > 0 || inExplosion || floodsSoon(gridX, gridY);
+        }
+
+        // La marée arrive sur cette case dans moins de AI_TIDE_MARGIN ms ?
+        const AI_TIDE_MARGIN = 2500;
+        function floodsSoon(x, y) {
+            return floodTime(x, y) - serverNow() < AI_TIDE_MARGIN;
         }
 
         // Une case est-elle dans le rayon d'explosion d'une bombe, ou dans une
         // explosion active ? Utilisé pour écarter STRICTEMENT ces cases de la
         // fuite plutôt que de simplement les pénaliser par un score.
         function isCellDangerous(x, y) {
+            if (floodsSoon(x, y)) return true;
             const inBombRange = gameState.bombs.some(bomb => {
                 const distX = Math.abs(bomb.x - x);
                 const distY = Math.abs(bomb.y - y);
@@ -1603,8 +1853,8 @@
                         break;
                     }
                     
-                    // Si on rencontre un mur, arrêter dans cette direction
-                    if (gameState.map[newY][newX] === TILE_TYPES.WALL) {
+                    // Si on rencontre un mur (ou la mer montée), arrêter dans cette direction
+                    if (gameState.map[newY][newX] === TILE_TYPES.WALL || isFlooded(newX, newY)) {
                         break;
                     }
                     
@@ -1720,19 +1970,21 @@
         // ne vérifie que les entités qu'il simule (son joueur, et l'IA en solo) :
         // en multi, les positions distantes ont du retard et chaque client
         // écrirait la mort de l'autre sur une position périmée.
+        // Même règle pour la marée : une entité sur une case inondée est noyée.
         function checkPlayersInFlames() {
-            if (gameState.explosions.length === 0) return;
-
             for (const id of localEntityIds()) {
                 const player = gameState.players[id];
                 if (!player || !player.alive) continue;
 
                 const gridX = Math.floor(player.x / TILE_SIZE);
                 const gridY = Math.floor(player.y / TILE_SIZE);
-                if (!isCellOnFire(gridX, gridY)) continue;
+                const onFire = gameState.explosions.length > 0 && isCellOnFire(gridX, gridY);
+                const drowned = isFlooded(gridX, gridY);
+                if (!onFire && !drowned) continue;
 
                 log(`MORT de ${id} en (${gridX},${gridY}) [x=${Math.round(player.x)} ` +
-                    `y=${Math.round(player.y)} moving=${player.moving}] - entré dans une flamme active`);
+                    `y=${Math.round(player.y)} moving=${player.moving}] - ` +
+                    (drowned ? 'noyé par la marée' : 'entré dans une flamme active'));
                 if (aiMode) {
                     log(`Dernières décisions IA :\n  ${aiHistory.join('\n  ')}`);
                 }
@@ -1795,6 +2047,17 @@
             // propriétaire ne l'a pas fait après BOMB_OWNER_GRACE (onglet en
             // arrière-plan, déconnecté…), n'importe quel onglet s'en charge.
             const ownIds = localEntityIds();
+
+            // Bombe engloutie par la marée : elle s'éteint sans exploser
+            const drowned = gameState.bombs.filter(bomb =>
+                ownIds.includes(bomb.playerId) && isFlooded(bomb.x, bomb.y));
+            if (drowned.length > 0) {
+                gameState.bombs = gameState.bombs.filter(bomb => !drowned.includes(bomb));
+                for (const bomb of drowned) {
+                    database.ref(`games/${gameState.roomId}/bombs/${bomb.id}`).remove();
+                }
+            }
+
             const bombsToExplode = gameState.bombs.filter(bomb =>
                 bomb.timer && (
                     (ownIds.includes(bomb.playerId) && bomb.timer <= currentTime) ||
@@ -2146,7 +2409,7 @@
 
         // Obtenir un bonus à une position
         function getBonusAt(x, y) {
-            return gameState.bonuses.find(bonus => bonus.x === x && bonus.y === y);
+            return gameState.bonuses.find(bonus => bonus.x === x && bonus.y === y && !isFlooded(x, y));
         }
 
         // Collecter un bonus
@@ -2299,11 +2562,13 @@
             gameRef.set({
                 map: generateMap(),
                 players: {
-                    player1: createPlayer(0, 0, '#ff6b6b')
+                    player1: spawnPlayer('player1')
                 },
                 bombs: {},
                 explosions: {},
                 bonuses: {},
+                // la manche 1 démarre quand le joueur 2 arrive (roundStart)
+                match: newMatch(['player1'], false),
                 gameStarted: false
             });
             
@@ -2342,8 +2607,12 @@
                 aiMode = false;
                 
                 // Ajouter le joueur 2 à la partie
-                gameRef.child('players/player2').set(createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4'));
-                gameRef.child('gameStarted').set(true);
+                gameRef.update({
+                    'players/player2': spawnPlayer('player2'),
+                    'match/scores/player2': 0,
+                    'match/roundStart': firebase.database.ServerValue.TIMESTAMP,
+                    gameStarted: true
+                });
                 
                 // Rejoindre la partie
                 // On vient de vérifier que player1 est là : pas seul dès le départ
@@ -2370,6 +2639,8 @@
             gameState.players = {};
             aiHistory = [];
             gameState.gameStarted = false;
+            gameState.match = null;
+            lastRoundKey = null;
         }
 
         // Créer une partie solo contre l'IA
@@ -2389,12 +2660,13 @@
             gameRef.set({
                 map: generateMap(),
                 players: {
-                    player1: createPlayer(0, 0, '#ff6b6b'),
-                    [aiPlayerId]: createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4')
+                    player1: spawnPlayer('player1'),
+                    [aiPlayerId]: spawnPlayer(aiPlayerId)
                 },
                 bombs: {},
                 explosions: {},
                 bonuses: {},
+                match: newMatch(['player1', aiPlayerId], true),
                 gameStarted: true
             });
             
@@ -2437,6 +2709,26 @@
             gameRef.on('value', (snapshot) => {
                 const gameData = snapshot.val();
                 if (!gameData) return;
+
+                // Manche : un nouveau numéro de manche = nouvelle carte et
+                // joueurs replacés à leur coin. On jette alors l'état local de
+                // déplacement (sinon la fusion ci-dessous réappliquerait les
+                // positions de la manche précédente).
+                gameState.match = gameData.match || null;
+                const roundKey = gameData.gameStarted && gameState.match ? gameState.match.round : null;
+                if (roundKey !== null && roundKey !== lastRoundKey) {
+                    gameState.players = {};
+                    for (const id in remoteDisplay) delete remoteDisplay[id];
+                    document.getElementById('gameControls').style.display = 'none';
+                    if (roundEndTimer) { clearTimeout(roundEndTimer); roundEndTimer = null; }
+                    startCountdown();
+                }
+                lastRoundKey = roundKey;
+                // Décompte calé sur l'heure serveur du début de manche (dès
+                // que Firebase a remplacé le TIMESTAMP par sa vraie valeur)
+                if (roundKey !== null && typeof gameState.match.roundStart === 'number') {
+                    countdownEnd = gameState.match.roundStart - serverOffset + COUNTDOWN_MS;
+                }
 
                 // Mettre à jour l'état du jeu local
                 gameState.map = gameData.map;
@@ -2499,9 +2791,6 @@
 
                 gameState.bonuses = toArray(gameData.bonuses);
                 
-                if (gameData.gameStarted && !gameState.gameStarted) {
-                    startCountdown();
-                }
                 gameState.gameStarted = gameData.gameStarted;
                 
                 // Afficher un message quand le jeu commence
@@ -2560,12 +2849,13 @@
                 gameRef.set({
                     map: generateMap(),
                     players: {
-                        player1: createPlayer(0, 0, '#ff6b6b'),
-                        [aiPlayerId]: createPlayer(GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4')
+                        player1: spawnPlayer('player1'),
+                        [aiPlayerId]: spawnPlayer(aiPlayerId)
                     },
                     bombs: {},
                     explosions: {},
                     bonuses: {},
+                    match: newMatch(['player1', aiPlayerId], true),
                     gameStarted: true
                 });
                 
@@ -2578,8 +2868,13 @@
                 
                 // Cacher les contrôles de jeu jusqu'à la fin de partie
                 document.getElementById('gameControls').style.display = 'none';
+            } else if (gameState.match && gameState.match.matchWinner &&
+                       matchIds().every(id => gameState.players[id])) {
+                // Multijoueur, adversaire toujours là : revanche dans la même
+                // salle (nouveau match, scores remis à zéro)
+                startRound(true);
             } else {
-                // Pour les parties multijoueur, revenir à l'écran de création de partie
+                // Adversaire parti : revenir à l'écran de création de partie
                 document.getElementById('roomControls').style.display = 'block';
                 document.getElementById('gameControls').style.display = 'none';
                 
@@ -2597,6 +2892,8 @@
                 gameState.explosions = [];
                 gameState.bonuses = [];
                 gameState.gameStarted = false;
+                gameState.match = null;
+                lastRoundKey = null;
             }
         }
 
@@ -2803,7 +3100,8 @@
         function detectEvents(now) {
             const bombIds = new Set(gameState.bombs.map(b => b.id));
             const explosionIds = new Set(gameState.explosions.map(e => e.id));
-            const fresh = fx.roomId !== gameState.roomId;
+            const key = gameState.roomId + '#' + (gameState.match ? gameState.match.round : 0);
+            const fresh = fx.roomId !== key;
 
             if (!fresh) {
                 if ([...bombIds].some(id => !fx.bombs.has(id))) sfx('place');
@@ -2835,7 +3133,7 @@
                 fx.deaths = [];
             }
 
-            fx.roomId = gameState.roomId;
+            fx.roomId = key;
             fx.bombs = bombIds;
             fx.explosions = explosionIds;
             fx.map = gameState.map ? gameState.map.map(row => row.slice()) : null;
@@ -2950,7 +3248,8 @@
                 (a === gameState.playerId ? -1 : 0) - (b === gameState.playerId ? -1 : 0)) : [];
             const key = ids.map(id => {
                 const p = gameState.players[id];
-                return [id, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier].join(':');
+                const score = gameState.match && gameState.match.scores ? gameState.match.scores[id] : 0;
+                return [id, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score].join(':');
             }).join('|') + (window.SPRITE_ATLAS ? 's' : '');
             if (key !== lastHudKey) {
                 lastHudKey = key;
@@ -2959,9 +3258,14 @@
                     const label = PLAYER_LABELS[id] || { name: id, accent: 'var(--wood)' };
                     const speed = Math.round(((p.speedMultiplier || 1) - 1) / 0.2);
                     const you = id === gameState.playerId ? '<small>vous</small>' : '<small>&nbsp;</small>';
+                    const m = gameState.match;
+                    const won = m && m.scores ? (m.scores[id] || 0) : 0;
+                    const need = m ? m.roundsToWin : DEFAULT_ROUNDS_TO_WIN;
+                    const pips = Array.from({ length: need }, (_, i) =>
+                        `<span class="pip${i < won ? ' won' : ''}"></span>`).join('');
                     return `<div class="player-card${p.alive ? '' : ' dead'}" style="--accent:${label.accent}">
                         <span class="portrait sprite" style="${spriteCss(skinOf(id) + '_down_0', 52)}"></span>
-                        <div class="name">${label.name}${you}</div>
+                        <div class="name">${label.name}${you}<span class="pips" title="Manches gagnées : ${won}">${pips}</span></div>
                         <div class="stats">
                             <span class="stat" title="Bombes"><i class="sprite" style="${spriteCss('bonus_bomb', 20)}"></i>${p.maxBombs}</span>
                             <span class="stat" title="Portée"><i class="sprite" style="${spriteCss('bonus_power', 20)}"></i>${p.bombRange}</span>
@@ -2970,6 +3274,25 @@
                     </div>`;
                 }).join('');
             }
+
+            // Barre de manche + chrono de la marée
+            const bar = document.getElementById('roundBar');
+            const m = gameState.match;
+            let barText = '';
+            if (m && gameState.gameStarted && !m.matchWinner && gameState.roomId) {
+                const ts = tideStart();
+                const left = ts - serverNow();
+                let tide = '';
+                if (ts !== Infinity) {
+                    tide = left > 0
+                        ? `Marée dans ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`
+                        : 'La marée monte !';
+                }
+                barText = `Manche ${m.round} · premier à ${m.roundsToWin}` + (tide ? ` · ${tide}` : '');
+                bar.classList.toggle('tide', ts !== Infinity && left <= 10000);
+            }
+            if (bar.textContent !== barText) bar.textContent = barText;
+            bar.hidden = !barText;
 
             // Écran de fin : titre et texte tirés du message de gameInfo
             // (« Victoire - … », « Défaite - … », « L'adversaire a quitté… »)
