@@ -62,6 +62,11 @@
         .modes, .bonuses { list-style: none; padding: 0; margin: 0; }
         .modes strong { color: var(--wood); }
 
+        .bonuses {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 18px;
+        }
         .bonuses li {
             display: grid;
             grid-template-columns: 40px 1fr;
@@ -81,7 +86,7 @@
         }
 
         @media (max-width: 640px) {
-            .grid { grid-template-columns: 1fr; }
+            .grid, .bonuses { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -109,7 +114,8 @@
                 <h2 class="card-title">Commandes</h2>
                 <p><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> se déplacer case par case</p>
                 <p><kbd>Espace</kbd> poser une bombe</p>
-                <p>Le dernier sur l'île a gagné. Attention : les flammes brûlent tant qu'elles sont là.</p>
+                <p><kbd>Entrée</kbd> déclencher ses bombes (avec le détonateur)</p>
+                <p>Le dernier debout gagne la manche, le premier à 3 manches gagne le match. Au bout de 90 s, la marée monte : ne traîne pas au bord !</p>
             </section>
 
             <section class="card" style="grid-column: 1 / -1">
@@ -118,6 +124,10 @@
                     <li><i class="sprite" data-sprite="bonus_bomb"></i><div><strong>Bombe +1</strong><span class="desc">Une bombe de plus posée en même temps</span></div></li>
                     <li><i class="sprite" data-sprite="bonus_power"></i><div><strong>Portée +1</strong><span class="desc">Les flammes vont une case plus loin</span></div></li>
                     <li><i class="sprite" data-sprite="bonus_speed"></i><div><strong>Vitesse +</strong><span class="desc">Des pas plus rapides sur le sable</span></div></li>
+                    <li><i class="sprite" data-sprite="bonus_kick"></i><div><strong>Coup de pied</strong><span class="desc">Marche contre une bombe pour l'envoyer glisser</span></div></li>
+                    <li><i class="sprite" data-sprite="bonus_detonator"></i><div><strong>Détonateur</strong><span class="desc">Tes bombes attendent ton signal : touche Entrée</span></div></li>
+                    <li><i class="sprite" data-sprite="bonus_pierce"></i><div><strong>Flamme perçante</strong><span class="desc">Tes flammes traversent les tonneaux</span></div></li>
+                    <li><i class="sprite" data-sprite="bonus_malus"></i><div><strong>Noix de coco pourrie</strong><span class="desc">À éviter ! Commandes inversées, bombes incontrôlables ou démarche toute molle pendant 10 s</span></div></li>
                 </ul>
             </section>
         </div>
@@ -135,7 +145,7 @@
             const k = size / atlas.size;
             const [x, y] = atlas.frames[el.dataset.sprite];
             el.style.backgroundImage = 'url(assets/sprites.png)';
-            el.style.backgroundSize = `${1024 * k}px ${384 * k}px`;
+            el.style.backgroundSize = `${atlas.width * k}px ${atlas.height * k}px`;
             el.style.backgroundPosition = `-${x * k}px -${y * k}px`;
         });
 

@@ -18,16 +18,20 @@ SPRITE = 64
 
 
 # ---------------------------------------------------------------- découpe
-def is_bg(p):
+def is_bg(p, strict=False):
+    """Fond magenta. strict : seulement le magenta vif (#FF00FF ± bruit
+    JPEG), pour les planches contenant du violet (badge coup de pied)."""
     r, g, b = p[:3]
+    if strict:
+        return r > 215 and b > 215 and g < 110
     return r > 120 and b > 120 and g < 110 and abs(r - b) < 70
 
 
-def components(im, min_px=1500, gap=6):
+def components(im, min_px=1500, gap=6, strict=False):
     """Boîtes englobantes des éléments posés sur le fond magenta."""
     w, h = im.size
     px = im.load()
-    mask = [[not is_bg(px[x, y]) for x in range(w)] for y in range(h)]
+    mask = [[not is_bg(px[x, y], strict) for x in range(w)] for y in range(h)]
     seen = [[False] * w for _ in range(h)]
     boxes = []
     for y in range(0, h, 2):
@@ -64,15 +68,19 @@ def components(im, min_px=1500, gap=6):
     return sorted(boxes, key=lambda b: (b[1] // 150, b[0]))
 
 
-def cutout(im, box):
+def cutout(im, box, strict=False):
     """Recadre et rend le fond magenta transparent (halo rose atténué)."""
     c = im.crop(box).convert('RGBA')
     px = c.load()
     for y in range(c.size[1]):
         for x in range(c.size[0]):
             r, g, b, a = px[x, y]
-            if is_bg((r, g, b)):
+            if is_bg((r, g, b), strict):
                 px[x, y] = (0, 0, 0, 0)
+            elif strict:
+                # halo : pixel de bord mélangé au magenta vif
+                if r > 225 and b > 225 and g < 150:
+                    px[x, y] = (r // 2, g, b // 2, 110)
             elif r > g + 60 and b > g + 60:
                 px[x, y] = (r // 2, g, b // 2, 90)
     return c
@@ -191,6 +199,17 @@ def main():
     sprites['bonus_power'] = fit(fix_badge(o[5])[0])
     sprites['bonus_speed'] = fit(fix_badge(o[6], r)[0])
 
+    # Bonus du lot 2 (planche bonus2.png, 2 lignes de 4). Ligne 1 : coup de
+    # pied (violet), détonateur (orange), flamme perçante (turquoise), bombe
+    # télécommandée. Ligne 2 : variantes, dont la noix de coco pourrie.
+    b2 = Image.open(os.path.join(SRC, 'bonus2.png')).convert('RGB')
+    o2 = [cutout(b2, b, strict=True) for b in components(b2, strict=True)]
+    sprites['bonus_kick'] = fit(o2[0])
+    sprites['bonus_detonator'] = fit(o2[1])
+    sprites['bonus_pierce'] = fit(o2[2])
+    sprites['bomb_remote'] = fit(o2[3])
+    sprites['bonus_malus'] = fit(o2[6])
+
     perso = Image.open(os.path.join(SRC, 'personnage.png')).convert('RGB')
     boxes = components(perso)
     frames = [fit(cutout(perso, b), anchor='bottom') for b in boxes]
@@ -215,7 +234,7 @@ def main():
     cols = 16
     rows_n = (len(names) + cols - 1) // cols
     atlas = Image.new('RGBA', (cols * SPRITE, rows_n * SPRITE))
-    meta = {'size': SPRITE, 'frames': {}}
+    meta = {'size': SPRITE, 'width': cols * SPRITE, 'height': rows_n * SPRITE, 'frames': {}}
     for i, n in enumerate(names):
         x, y = (i % cols) * SPRITE, (i // cols) * SPRITE
         atlas.paste(sprites[n], (x, y))

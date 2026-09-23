@@ -236,12 +236,113 @@ const gridOf = (page, id) => page.evaluate(id => {
     await scenarioDeconnexion();
     await scenarioSolo();
     await scenarioMaree();
+    await scenarioPouvoirs();
 
     server.close();
     const failed = results.filter(r => !r.ok).length;
     console.log(`\n${results.length - failed}/${results.length} tests OK — salles de test supprimées`);
     process.exit(failed ? 1 : 0);
 })();
+
+// Pouvoirs du lot 2, testés dans une partie solo sur une île préparée :
+// coup de pied, détonateur, flamme perçante, malus « commandes inversées ».
+async function scenarioPouvoirs() {
+    const P = await openPlayer('Pouvoirs', '?maree=600');
+    let room = null;
+    const setPlayer = (fields) => P.page.evaluate(f => {
+        const me = gameState.players.player1;
+        Object.assign(me, f);
+        return database.ref(`games/${gameState.roomId}/players/player1`).update(f);
+    }, fields);
+    const teleport = (x, y) => P.page.evaluate(({ x, y }) => {
+        const me = gameState.players.player1;
+        const px = x * TILE_SIZE + TILE_SIZE / 2, py = y * TILE_SIZE + TILE_SIZE / 2;
+        Object.assign(me, { x: px, y: py, fromX: px, fromY: py, toX: px, toY: py, moving: false });
+    }, { x, y });
+    const press = async (key, ms = 60) => { await P.page.keyboard.down(key); await sleep(ms); await P.page.keyboard.up(key); };
+    try {
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+        // IA figée et mise à l'écart, ligne du haut entièrement dégagée
+        await P.page.evaluate(() => {
+            clearInterval(aiMoveInterval);
+            const row = {};
+            for (let x = 0; x < GRID_SIZE; x++) { row[x] = TILE_TYPES.EMPTY; gameState.map[0][x] = TILE_TYPES.EMPTY; }
+            return database.ref(`games/${gameState.roomId}/map/0`).set(row);
+        });
+
+        // --- Coup de pied : bombe en (2,0), joueur en (1,0) pousse à droite
+        await setPlayer({ canKick: true });
+        await teleport(2, 0);
+        await press(' ');
+        await P.page.waitForFunction(() => gameState.bombs.some(b => b.x === 2 && b.y === 0), { timeout: 2000 });
+        await teleport(1, 0);
+        await press('ArrowRight');
+        await sleep(1200);
+        const kicked = await P.page.evaluate(() => {
+            const b = gameState.bombs[0];
+            const me = gameState.players.player1;
+            return { bomb: b && [b.x, b.y], me: [Math.floor(me.x / TILE_SIZE), Math.floor(me.y / TILE_SIZE)] };
+        });
+        check('Coup de pied : la bombe glisse jusqu’au bord', kicked.bomb && kicked.bomb[0] === 14 && kicked.bomb[1] === 0,
+            JSON.stringify(kicked));
+        // touche encore enfoncée après le coup : il peut suivre la bombe d'une
+        // case (comportement classique), mais pas la dépasser
+        check('Coup de pied : le joueur ne traverse pas la bombe', kicked.me[1] === 0 && kicked.me[0] <= 2, JSON.stringify(kicked.me));
+        await P.page.waitForFunction(() => gameState.bombs.length === 0 && gameState.explosions.length === 0, { timeout: 6000 });
+
+        // --- Détonateur : la bombe n'explose pas seule, Entrée la déclenche
+        await setPlayer({ canKick: false, hasDetonator: true });
+        await teleport(4, 0);
+        await press(' ');
+        await teleport(8, 0);
+        await sleep(3500); // plus que la mèche normale
+        const stillThere = await P.page.evaluate(() => gameState.bombs.filter(b => b.remote).length);
+        check('Détonateur : bombe toujours là après 3,5 s', stillThere === 1, `bombes télécommandées=${stillThere}`);
+        await teleport(4, 12); // à l'abri
+        await press('Enter');
+        await sleep(300);
+        const detonated = await P.page.evaluate(() => ({ bombs: gameState.bombs.length, expl: gameState.explosions.length }));
+        check('Détonateur : Entrée la fait exploser', detonated.bombs === 0 && detonated.expl === 1, JSON.stringify(detonated));
+        await P.page.waitForFunction(() => gameState.explosions.length === 0, { timeout: 3000 });
+
+        // --- Flamme perçante : 2 tonneaux alignés détruits d'un coup
+        await setPlayer({ hasDetonator: false, pierce: true, bombRange: 3 });
+        await P.page.evaluate(() => {
+            gameState.map[0][6] = TILE_TYPES.BRICK;
+            gameState.map[0][7] = TILE_TYPES.BRICK;
+            return database.ref(`games/${gameState.roomId}/map/0`).update({ 6: TILE_TYPES.BRICK, 7: TILE_TYPES.BRICK });
+        });
+        await teleport(5, 0);
+        await press(' ');
+        await teleport(4, 12);
+        await P.page.waitForFunction(() => gameState.explosions.length > 0, { timeout: 5000 });
+        await sleep(200);
+        const pierced = await P.page.evaluate(() => [gameState.map[0][6], gameState.map[0][7]]);
+        check('Flamme perçante : deux tonneaux alignés détruits', pierced[0] === 0 && pierced[1] === 0, // 0 = sable
+            JSON.stringify(pierced));
+        await P.page.waitForFunction(() => gameState.explosions.length === 0, { timeout: 3000 });
+
+        // --- Malus « commandes inversées » : flèche droite = pas à gauche
+        await setPlayer({ pierce: false, malus: 'inverse', malusUntil: Date.now() + 5000 });
+        await P.page.evaluate(() => { gameState.players.player1.malusUntil = Date.now() + 5000; });
+        await teleport(10, 0);
+        await press('ArrowRight');
+        await sleep(400);
+        const inv = await gridOf(P.page, 'player1');
+        check('Malus : commandes inversées', inv.x === 9 && inv.y === 0, `position=(${inv.x},${inv.y})`);
+        const hudMalus = await P.page.$('#hud .powers i.malus');
+        check('Malus affiché sur la fiche joueur', !!hudMalus);
+    } catch (e) {
+        check('Déroulement du scénario pouvoirs', false, e.message);
+    } finally {
+        check('Aucune erreur JS (pouvoirs)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
+}
 
 // Marée montante : réglée à 0,5 s après le décompte. Le joueur reste
 // immobile dans son coin, qui est inondé en premier : il doit se noyer, et
