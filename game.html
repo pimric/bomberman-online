@@ -206,6 +206,7 @@
     <!-- Import Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
+    <script src="assets/sprites.js"></script>
 
     <script>
         // Ajout d'un système de journalisation simple
@@ -679,7 +680,8 @@
             }
             
             // Dessiner la carte
-            for (let y = 0; y < GRID_SIZE; y++) {
+            if (spritesReady()) renderMapSprites();
+            else for (let y = 0; y < GRID_SIZE; y++) {
                 for (let x = 0; x < GRID_SIZE; x++) {
                     const tileType = gameState.map[y][x];
                     const tileX = x * TILE_SIZE;
@@ -739,12 +741,19 @@
             // Dessiner les bombes
             renderBombs();
             
-            // Dessiner les joueurs
-            for (const playerId in gameState.players) {
+            // Dessiner les joueurs (du haut vers le bas de l'écran, pour
+            // qu'un personnage plus bas passe devant l'autre)
+            const nowRender = Date.now();
+            const visiblePlayers = Object.keys(gameState.players)
+                .filter(id => gameState.players[id] && gameState.players[id].alive)
+                .map(id => ({ id, pos: getDisplayPosition(id, gameState.players[id]) }))
+                .sort((a, b) => a.pos.y - b.pos.y);
+            if (spritesReady()) {
+                for (const p of visiblePlayers) renderPlayerSprite(p.id, p.pos.x, p.pos.y, nowRender);
+            } else for (const { id: playerId, pos } of visiblePlayers) {
                 const rawPlayer = gameState.players[playerId];
-                if (rawPlayer && rawPlayer.alive) {
-                    // Position affichée (lissée pour les joueurs distants)
-                    const playerData = { ...rawPlayer, ...getDisplayPosition(playerId, rawPlayer) };
+                {
+                    const playerData = { ...rawPlayer, ...pos };
                     // Fond du joueur
                     ctx.fillStyle = playerData.color;
                     ctx.beginPath();
@@ -1638,10 +1647,177 @@
             }
         }
 
+        //--------------------------------------------------
+        // RENDU PAR SPRITES (assets/sprites.png, généré par tools/build_sprites.py)
+        // Si l'atlas n'est pas chargé, chaque fonction retombe sur l'ancien
+        // dessin en formes simples.
+        //--------------------------------------------------
+        const spriteSheet = new Image();
+        let spritesLoaded = false;
+        spriteSheet.onload = () => { spritesLoaded = true; };
+        spriteSheet.onerror = () => log('Sprites introuvables : rendu simplifié');
+        spriteSheet.src = 'assets/sprites.png';
+
+        function spritesReady() {
+            return spritesLoaded && window.SPRITE_ATLAS;
+        }
+
+        // Dessine le sprite `name` centré en (cx, cy), taille w x h, avec
+        // rotation optionnelle (radians)
+        function drawSprite(name, cx, cy, w, h = w, rotation = 0) {
+            const pos = SPRITE_ATLAS.frames[name];
+            if (!pos) return;
+            const s = SPRITE_ATLAS.size;
+            ctx.save();
+            ctx.translate(cx, cy);
+            if (rotation) ctx.rotate(rotation);
+            ctx.drawImage(spriteSheet, pos[0], pos[1], s, s, -w / 2, -h / 2, w, h);
+            ctx.restore();
+        }
+
+        // Variante de sable pseudo-aléatoire mais stable pour une case donnée
+        function sandVariant(x, y) {
+            return ((x * 73856093) ^ (y * 19349663)) % 7 === 0 ? 'sand2' : 'sand';
+        }
+
+        function renderMapSprites() {
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const cx = x * TILE_SIZE + TILE_SIZE / 2;
+                    const cy = y * TILE_SIZE + TILE_SIZE / 2;
+                    drawSprite('sand', cx, cy, TILE_SIZE + 0.5);
+                    // Variante foncée en léger voile : en plein, elle faisait des taches
+                    if (sandVariant(x, y) === 'sand2') {
+                        ctx.globalAlpha = 0.3;
+                        drawSprite('sand2', cx, cy, TILE_SIZE + 0.5);
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+            // Obstacles après le sol : un palmier peut déborder un peu sur ses voisins
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const tile = gameState.map[y][x];
+                    const cx = x * TILE_SIZE + TILE_SIZE / 2;
+                    const cy = y * TILE_SIZE + TILE_SIZE / 2;
+                    if (tile === TILE_TYPES.WALL) {
+                        drawSprite('palm', cx, cy, TILE_SIZE * 1.1);
+                    } else if (tile === TILE_TYPES.BRICK) {
+                        drawSprite('barrel', cx, cy, TILE_SIZE * 0.95);
+                    }
+                }
+            }
+        }
+
+        function renderBombsSprites() {
+            const now = Date.now();
+            for (const bomb of gameState.bombs) {
+                // Pulsation qui s'accélère à l'approche de l'explosion
+                const timeLeft = Math.max(0, bomb.timer - now);
+                const speed = timeLeft < 1000 ? 60 : 160;
+                const scale = 1 + 0.08 * Math.sin(now / speed);
+                drawSprite('bomb', bomb.x * TILE_SIZE + TILE_SIZE / 2,
+                    bomb.y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE * 0.9 * scale);
+            }
+        }
+
+        function renderExplosionsSprites() {
+            const now = Date.now();
+            for (const explosion of gameState.explosions) {
+                const t = (now - explosion.timestamp) / explosion.duration;
+                if (t >= 1) continue;
+                const center = explosion.cells[0];
+                const inExplosion = (x, y) => explosion.cells.some(c => c.x === x && c.y === y);
+
+                // Grossit vite puis s'estompe sur la fin
+                ctx.save();
+                ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+                const grow = Math.min(1, t * 6);
+                const flicker = 1 + 0.06 * Math.sin(now / 40);
+
+                for (const cell of explosion.cells) {
+                    const cx = cell.x * TILE_SIZE + TILE_SIZE / 2;
+                    const cy = cell.y * TILE_SIZE + TILE_SIZE / 2;
+                    if (cell.x === center.x && cell.y === center.y) {
+                        drawSprite('flame_center', cx, cy, TILE_SIZE * 1.15 * grow * flicker);
+                        continue;
+                    }
+                    const dx = Math.sign(cell.x - center.x);
+                    const dy = Math.sign(cell.y - center.y);
+                    // Le sprite de flamme pointe vers la droite
+                    const rotation = Math.atan2(dy, dx);
+                    const isEnd = !inExplosion(cell.x + dx, cell.y + dy);
+                    drawSprite(isEnd ? 'flame_end' : 'flame_mid', cx, cy,
+                        TILE_SIZE + 1, TILE_SIZE * 0.9 * grow * flicker, rotation);
+                }
+                ctx.restore();
+            }
+        }
+
+        const BONUS_SPRITES = {
+            [BONUS_TYPES.BOMB]: 'bonus_bomb',
+            [BONUS_TYPES.POWER]: 'bonus_power',
+            [BONUS_TYPES.SPEED]: 'bonus_speed'
+        };
+
+        function renderBonusesSprites() {
+            const now = Date.now();
+            for (const bonus of gameState.bonuses) {
+                const bob = Math.sin(now / 250 + bonus.x) * 2;
+                drawSprite(BONUS_SPRITES[bonus.type], bonus.x * TILE_SIZE + TILE_SIZE / 2,
+                    bonus.y * TILE_SIZE + TILE_SIZE / 2 + bob, TILE_SIZE * 0.8);
+            }
+        }
+
+        // Tenue de chaque joueur
+        function skinOf(playerId) {
+            if (playerId === aiPlayerId) return 'ai';
+            return playerId === 'player2' ? 'blue' : 'red';
+        }
+
+        // État d'animation par joueur, calculé à partir de la position
+        // AFFICHÉE (marche aussi pour l'adversaire lissé) : direction et
+        // « en marche » viennent du déplacement entre deux images.
+        const playerAnim = {};
+        const WALK_FRAME_MS = 110;
+
+        function updatePlayerAnim(playerId, x, y, now) {
+            let a = playerAnim[playerId];
+            if (!a) a = playerAnim[playerId] = { x, y, dir: 'down', lastMove: 0 };
+            const dx = x - a.x, dy = y - a.y;
+            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+                a.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+                a.lastMove = now;
+            }
+            a.x = x; a.y = y;
+            // petit délai : pas d'arrêt visuel entre deux cases enchaînées
+            a.walking = now - a.lastMove < 80;
+            return a;
+        }
+
+        function renderPlayerSprite(playerId, x, y, now) {
+            const a = updatePlayerAnim(playerId, x, y, now);
+            const count = SPRITE_ATLAS.walk[a.dir];
+            const frame = a.walking ? Math.floor(now / WALK_FRAME_MS) % count : 0;
+
+            // Ombre au sol : détache le personnage du sable clair
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+            ctx.beginPath();
+            ctx.ellipse(x, y + TILE_SIZE * 0.42, TILE_SIZE * 0.3, TILE_SIZE * 0.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Le personnage dépasse un peu de sa case vers le haut (vue 3/4)
+            const size = TILE_SIZE * 1.25;
+            drawSprite(`${skinOf(playerId)}_${a.dir}_${frame}`, x, y + TILE_SIZE / 2 - size / 2 + 1, size);
+        }
+
         // Dessiner les bombes
         function renderBombs() {
             if (!gameState.bombs) return;
-            
+            if (spritesReady()) return renderBombsSprites();
+
             for (const bomb of gameState.bombs) {
                 // Calculer l'animation de la bombe (pulsation)
                 const timeLeft = bomb.timer - Date.now();
@@ -1707,7 +1883,8 @@
         // Dessiner les explosions
         function renderExplosions() {
             if (!gameState.explosions) return;
-            
+            if (spritesReady()) return renderExplosionsSprites();
+
             const currentTime = Date.now();
             
             for (const explosion of gameState.explosions) {
@@ -1869,7 +2046,8 @@
         // Dessiner les bonus
         function renderBonuses() {
             if (!gameState.bonuses || gameState.bonuses.length === 0) return;
-            
+            if (spritesReady()) return renderBonusesSprites();
+
             for (const bonus of gameState.bonuses) {
                 // Position du bonus
                 const x = bonus.x * TILE_SIZE + TILE_SIZE/2;

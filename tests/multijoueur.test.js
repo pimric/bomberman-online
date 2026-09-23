@@ -22,7 +22,7 @@ const server = http.createServer((req, res) => {
     const file = path.join(GAME_DIR, decodeURIComponent(req.url.split('?')[0]) || '/');
     fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404); return res.end(); }
-        res.writeHead(200, { 'Content-Type': file.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream' });
+        res.writeHead(200, { 'Content-Type': ({ '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png' })[path.extname(file)] || 'application/octet-stream' });
         res.end(data);
     });
 });

@@ -1,0 +1,224 @@
+"""Construit assets/sprites.png + assets/sprites.js à partir des planches
+générées (assets/src/*.png, fond magenta). Relancer après tout changement de
+planche :  python tools/build_sprites.py
+
+Chaque sprite est stocké en SPRITE px (2x la case du jeu) pour rester net
+quand le canvas le réduit à TILE_SIZE.
+"""
+import colorsys
+import json
+import os
+from PIL import Image
+
+ROOT = os.path.join(os.path.dirname(__file__), '..')
+SRC = os.path.join(ROOT, 'assets', 'src')
+OUT_PNG = os.path.join(ROOT, 'assets', 'sprites.png')
+OUT_JS = os.path.join(ROOT, 'assets', 'sprites.js')
+SPRITE = 64
+
+
+# ---------------------------------------------------------------- découpe
+def is_bg(p):
+    r, g, b = p[:3]
+    return r > 120 and b > 120 and g < 110 and abs(r - b) < 70
+
+
+def components(im, min_px=1500, gap=6):
+    """Boîtes englobantes des éléments posés sur le fond magenta."""
+    w, h = im.size
+    px = im.load()
+    mask = [[not is_bg(px[x, y]) for x in range(w)] for y in range(h)]
+    seen = [[False] * w for _ in range(h)]
+    boxes = []
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            if mask[y][x] and not seen[y][x]:
+                st = [(x, y)]
+                seen[y][x] = True
+                x0 = x1 = x
+                y0 = y1 = y
+                n = 0
+                while st:
+                    cx, cy = st.pop()
+                    n += 1
+                    x0, x1, y0, y1 = min(x0, cx), max(x1, cx), min(y0, cy), max(y1, cy)
+                    for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                        if 0 <= nx < w and 0 <= ny < h and mask[ny][nx] and not seen[ny][nx]:
+                            seen[ny][nx] = True
+                            st.append((nx, ny))
+                if n > min_px:
+                    boxes.append((x0, y0, x1 + 1, y1 + 1))
+    merged = True
+    while merged:  # regrouper les morceaux proches (étincelles, gouttes…)
+        merged = False
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                a, b = boxes[i], boxes[j]
+                if a[0] - gap < b[2] and b[0] - gap < a[2] and a[1] - gap < b[3] and b[1] - gap < a[3]:
+                    boxes[i] = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+                    boxes.pop(j)
+                    merged = True
+                    break
+            if merged:
+                break
+    return sorted(boxes, key=lambda b: (b[1] // 150, b[0]))
+
+
+def cutout(im, box):
+    """Recadre et rend le fond magenta transparent (halo rose atténué)."""
+    c = im.crop(box).convert('RGBA')
+    px = c.load()
+    for y in range(c.size[1]):
+        for x in range(c.size[0]):
+            r, g, b, a = px[x, y]
+            if is_bg((r, g, b)):
+                px[x, y] = (0, 0, 0, 0)
+            elif r > g + 60 and b > g + 60:
+                px[x, y] = (r // 2, g, b // 2, 90)
+    return c
+
+
+def fit(c, size=SPRITE, anchor='center'):
+    """Réduit dans un carré size x size en gardant les proportions.
+    anchor='bottom' : pieds posés en bas (personnages)."""
+    w, h = c.size
+    s = size / max(w, h)
+    r = c.resize((max(1, round(w * s)), max(1, round(h * s))), Image.LANCZOS)
+    out = Image.new('RGBA', (size, size))
+    y = size - r.size[1] if anchor == 'bottom' else (size - r.size[1]) // 2
+    out.paste(r, ((size - r.size[0]) // 2, y))
+    return out
+
+
+# --------------------------------------------------------- recolorations
+def recolor(img, rule):
+    out = img.copy()
+    px = out.load()
+    w, h = out.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            hh, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            res = rule(hh, s, v, y / h)
+            if res:
+                nr, ng, nb = colorsys.hsv_to_rgb(*res)
+                px[x, y] = (round(nr * 255), round(ng * 255), round(nb * 255), a)
+    return out
+
+
+def is_swimsuit(h, s, v):
+    return (h < 0.03 or h > 0.96) and s > 0.45 and v > 0.35
+
+
+def to_blue(h, s, v, fy):
+    if is_swimsuit(h, s, v):
+        return (0.58, s, v)
+
+
+def make_ai(head_top):
+    """IA : maillot anthracite + bandana rouge (haut des cheveux)."""
+    def rule(h, s, v, fy):
+        if is_swimsuit(h, s, v):
+            return (0.62, 0.15, v * 0.35)
+        hair = 0.03 <= h <= 0.12 and s > 0.3 and 0.2 < v < 0.75
+        if hair and fy < head_top:
+            return (0.0, 0.85, min(1, v * 1.6))
+    return rule
+
+
+# ------------------------------------------------------------ objets
+def fix_badge(c, r=None):
+    """Efface le texte (+BOMB…) qui chevauche le bas du badge : on
+    reconstruit le bas du cercle par symétrie du haut. Renvoie (image, r).
+    r peut être imposé : les ailes du badge vitesse faussent la mesure."""
+    w, h = c.size
+    px = c.load()
+    top = next(y for y in range(h) if any(px[x, y][3] for x in range(w)))
+    if r is None:
+        # badge sans ailes : largeur du cercle = diamètre
+        r = w // 2
+    cy = top + r
+    out = c.copy()
+    opx = out.load()
+    cut = cy + int(r * 0.55)
+    for y in range(cut, h):
+        my = 2 * cy - y
+        for x in range(w):
+            opx[x, y] = px[x, my] if 0 <= my < h and y <= cy + r + 2 else (0, 0, 0, 0)
+    return out.crop((0, 0, w, min(h, cy + r + 3))), r
+
+
+def flame_square(c, where):
+    """Carré découpé dans une flamme horizontale : 'middle' (segment
+    raccordable) ou 'end' (bout arrondi, pointe vers la droite)."""
+    w, h = c.size
+    side = h
+    x0 = (w - side) // 2 if where == 'middle' else w - side
+    return c.crop((x0, 0, x0 + side, h))
+
+
+# ------------------------------------------------------------ assemblage
+def main():
+    sprites = {}
+
+    decor = Image.open(os.path.join(SRC, 'decor.png')).convert('RGB')
+    d = [cutout(decor, b) for b in components(decor)]
+    # ordre détecté : sable, sable foncé, palmier, tonneau, eau
+    for name, img in zip(['sand', 'sand2', 'palm', 'barrel', 'water'], d):
+        sprites[name] = fit(img)
+
+    obj = Image.open(os.path.join(SRC, 'objets.png')).convert('RGB')
+    o = [cutout(obj, b) for b in components(obj)]
+    # bombe, explosion, flamme longue, flamme courte, 4 badges
+    sprites['bomb'] = fit(o[0])
+    sprites['flame_center'] = fit(o[1])
+    sprites['flame_mid'] = fit(flame_square(o[2], 'middle'))
+    sprites['flame_end'] = fit(flame_square(o[3], 'end'))
+    badge_bomb, r = fix_badge(o[4])
+    sprites['bonus_bomb'] = fit(badge_bomb)
+    sprites['bonus_power'] = fit(fix_badge(o[5])[0])
+    sprites['bonus_speed'] = fit(fix_badge(o[6], r)[0])
+
+    perso = Image.open(os.path.join(SRC, 'personnage.png')).convert('RGB')
+    boxes = components(perso)
+    frames = [fit(cutout(perso, b), anchor='bottom') for b in boxes]
+    rows = [frames[0:7], frames[7:14], frames[14:21]]
+    # Choix des images de marche (voir planche) : la ligne 1 mélange des
+    # vues, seules les 4 premières sont de face. Cycle : debout, pas, debout, pas.
+    walk = {
+        'down': [rows[0][3], rows[0][0], rows[0][3], rows[0][1]],
+        'up': [rows[1][3], rows[1][0], rows[1][3], rows[1][1]],
+        'right': [rows[2][3], rows[2][0], rows[2][1], rows[2][2], rows[2][3], rows[2][4], rows[2][5], rows[2][6]],
+    }
+    walk['left'] = [f.transpose(Image.FLIP_LEFT_RIGHT) for f in walk['right']]
+
+    skins = {'red': None, 'blue': to_blue, 'ai': make_ai(0.22)}
+    for skin, rule in skins.items():
+        for direction, seq in walk.items():
+            for i, f in enumerate(seq):
+                sprites[f'{skin}_{direction}_{i}'] = recolor(f, rule) if rule else f
+
+    # Atlas en grille
+    names = list(sprites)
+    cols = 16
+    rows_n = (len(names) + cols - 1) // cols
+    atlas = Image.new('RGBA', (cols * SPRITE, rows_n * SPRITE))
+    meta = {'size': SPRITE, 'frames': {}}
+    for i, n in enumerate(names):
+        x, y = (i % cols) * SPRITE, (i // cols) * SPRITE
+        atlas.paste(sprites[n], (x, y))
+        meta['frames'][n] = [x, y]
+    meta['walk'] = {d: len(s) for d, s in walk.items()}
+    atlas.save(OUT_PNG, optimize=True)
+    # .js plutôt que .json : chargé par une balise <script>, il marche aussi
+    # quand le jeu est ouvert en file:// (fetch y est bloqué)
+    with open(OUT_JS, 'w', encoding='utf-8') as f:
+        f.write('// Généré par tools/build_sprites.py — ne pas modifier à la main\n')
+        f.write('window.SPRITE_ATLAS = ' + json.dumps(meta) + ';\n')
+    print(f'{len(names)} sprites -> {OUT_PNG} ({atlas.size[0]}x{atlas.size[1]})')
+
+
+if __name__ == '__main__':
+    main()
