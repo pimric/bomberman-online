@@ -167,6 +167,12 @@ def main():
     d = [cutout(decor, b) for b in components(decor)]
     # ordre détecté : sable, sable foncé, palmier, tonneau, eau
     for name, img in zip(['sand', 'sand2', 'palm', 'barrel', 'water'], d):
+        if name in ('sand', 'sand2', 'water'):
+            # Tuiles de sol : rogner le liseré clair des bords, sinon le
+            # plateau montre un quadrillage
+            w, h = img.size
+            m = round(min(w, h) * 0.05)
+            img = img.crop((m, m, w - m, h - m))
         sprites[name] = fit(img)
 
     obj = Image.open(os.path.join(SRC, 'objets.png')).convert('RGB')

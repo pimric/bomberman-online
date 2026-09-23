@@ -1,0 +1,173 @@
+/* Island Bomber — styles communs (accueil + jeu).
+   Palette tirée des sprites : sable, bois des tonneaux, palmiers, lagon. */
+:root {
+    --sea-deep: #0a5c78;
+    --sea: #1aa3c0;
+    --sea-light: #3ec6cf;
+    --foam: #e8fbff;
+    --sand-light: #fdf1d3;
+    --sand: #f6dca3;
+    --sand-deep: #dcb46e;
+    --wood: #8a5a2b;
+    --wood-dark: #5e3a17;
+    --palm: #45a843;
+    --palm-dark: #2d7a2b;
+    --sunset: #ff8a3d;
+    --sunset-dark: #d8611d;
+    --ink: #3b2412;
+    --red: #e0453a;
+    --blue: #2f86d6;
+    --ai: #3a3f4a;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; }
+/* fond de secours sous le dégradé (défilement mobile, iOS sans attachment fixed) */
+html { background: var(--sea-deep); }
+
+body {
+    font-family: 'Baloo 2', 'Trebuchet MS', sans-serif;
+    font-size: 17px;
+    color: var(--ink);
+    background: linear-gradient(180deg, var(--sea-light) 0%, var(--sea) 45%, var(--sea-deep) 100%);
+    background-attachment: fixed;
+    overflow-x: hidden;
+}
+
+/* ---- Océan animé en fond ---- */
+.ocean {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    /* reflets du soleil sur l'eau */
+    background:
+        radial-gradient(ellipse at 20% 15%, rgba(255, 255, 255, .25), transparent 40%),
+        radial-gradient(ellipse at 85% 30%, rgba(255, 255, 255, .15), transparent 35%);
+}
+.wave {
+    position: absolute;
+    left: -10%;
+    width: 120%;
+    height: 90px;
+    bottom: 0;
+    opacity: .22;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 40' preserveAspectRatio='none'%3E%3Cpath d='M0 20 Q30 4 60 20 T120 20 T180 20 T240 20 V40 H0Z' fill='%23e8fbff'/%3E%3C/svg%3E") repeat-x bottom;
+    background-size: 240px 90px;
+    animation: swell 9s ease-in-out infinite;
+}
+.wave2 {
+    bottom: 34px;
+    opacity: .12;
+    animation-duration: 13s;
+    animation-direction: reverse;
+}
+@keyframes swell {
+    0%, 100% { transform: translateX(0) translateY(0); }
+    50% { transform: translateX(-60px) translateY(6px); }
+}
+
+/* ---- Logo ---- */
+.logo {
+    font-family: 'Pacifico', cursive;
+    color: var(--sand-light);
+    text-decoration: none;
+    line-height: 1.1;
+    text-shadow: 0 3px 0 var(--wood), 0 6px 14px rgba(0, 40, 60, .45);
+    letter-spacing: 1px;
+}
+
+/* ---- Cartes (panneaux sable) ---- */
+.card {
+    background: var(--sand-light);
+    border-radius: 22px;
+    padding: 20px 22px;
+    box-shadow: 0 6px 0 var(--sand-deep), 0 18px 34px rgba(0, 40, 60, .3);
+}
+.card-title {
+    font-family: 'Pacifico', cursive;
+    font-weight: 400;
+    color: var(--wood);
+    font-size: 26px;
+}
+
+/* ---- Boutons ---- */
+.btn {
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 800;
+    color: #fff;
+    background: var(--palm);
+    border: none;
+    border-radius: 14px;
+    padding: 10px 20px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    box-shadow: 0 4px 0 var(--palm-dark);
+    transition: transform .12s, box-shadow .12s, filter .12s;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 var(--palm-dark); filter: brightness(1.06); }
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--palm-dark); }
+.btn:focus-visible { outline: 3px solid var(--foam); outline-offset: 3px; }
+
+.btn-primary { background: var(--sunset); box-shadow: 0 4px 0 var(--sunset-dark); }
+.btn-primary:hover { box-shadow: 0 6px 0 var(--sunset-dark); }
+.btn-primary:active { box-shadow: 0 1px 0 var(--sunset-dark); }
+
+.btn-secondary { background: var(--wood); box-shadow: 0 4px 0 var(--wood-dark); }
+.btn-secondary:hover { box-shadow: 0 6px 0 var(--wood-dark); }
+.btn-secondary:active { box-shadow: 0 1px 0 var(--wood-dark); }
+
+.btn-ghost {
+    background: rgba(255, 255, 255, .18);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .6);
+}
+.btn-ghost:hover { box-shadow: inset 0 0 0 2px #fff; }
+.btn-ghost:active { box-shadow: inset 0 0 0 2px #fff; }
+
+.btn-big { font-size: 22px; padding: 14px 28px; border-radius: 18px; }
+.btn-small { font-size: 15px; padding: 6px 14px; }
+
+input[type="text"] {
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--ink);
+    background: #fff;
+    border: 2px solid var(--sand-deep);
+    border-radius: 14px;
+    padding: 9px 14px;
+    min-width: 0;
+}
+input[type="text"]::placeholder { color: #b89868; font-weight: 600; }
+input[type="text"]:focus { outline: none; border-color: var(--sunset); box-shadow: 0 0 0 3px rgba(255, 138, 61, .25); }
+
+kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: var(--sand-light);
+    color: var(--ink);
+    box-shadow: 0 2px 0 var(--sand-deep);
+    font-family: inherit;
+    font-weight: 800;
+    text-align: center;
+}
+
+/* Icône tirée de l'atlas de sprites (voir spriteCss() dans les pages) */
+.sprite { display: inline-block; background-repeat: no-repeat; }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wave, .card, #gameControls, .end-card { animation: none !important; }
+    .btn { transition: none; }
+}

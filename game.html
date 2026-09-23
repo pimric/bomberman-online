@@ -4,165 +4,168 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Island Bomber</title>
-    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Pacifico&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/ile.css">
     <style>
-        /* Styles pour le jeu Island Bomber */
-        body {
-            background: linear-gradient(135deg, #0099cc, #006699);
+        /* ---- Page de jeu ---- */
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 1040px;
+            margin: 0 auto;
+            padding: 16px 16px 40px;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            color: white;
-            background-image: url('https://cdnjs.cloudflare.com/ajax/libs/line-awesome/1.3.0/svg/palm-tree.svg');
-            background-repeat: repeat;
-            background-size: 100px;
-            background-blend-mode: soft-light;
+            gap: 14px;
         }
 
-        #gameContainer {
-            text-align: center;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-            border: 3px solid #ffd700;
+        .topbar {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
         }
+        .topbar .logo { font-size: clamp(28px, 5vw, 40px); }
 
-        canvas {
-            border: 4px solid #ffd700;
-            background-color: #f9e8b0; /* Sand color */
-            image-rendering: pixelated;
-            border-radius: 8px;
-        }
-
-        h1 {
-            font-family: 'Pacifico', cursive;
-            font-size: 36px;
-            color: #ffd700; /* Gold color for reggae vibe */
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 2px 2px 0px #000, 4px 4px 0px #006699;
-            font-weight: bold;
-        }
-
+        /* Menu de choix de partie */
         #roomControls {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: rgba(34, 139, 34, 0.7); /* Forest green with opacity */
-            border-radius: 10px;
-            border: 2px dashed #ffd700;
+            width: min(560px, 100%);
+            text-align: center;
         }
-
-        button {
-            background: linear-gradient(to bottom, #ff9900, #ff6600);
-            color: white;
-            border: none;
-            padding: 10px 18px;
-            margin: 0 8px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            font-weight: bold;
-            font-size: 14px;
-            text-transform: uppercase;
-            box-shadow: 0 4px 0 #cc5200;
-            transition: all 0.2s;
+        #roomControls h2 { margin: 0 0 14px; }
+        .solo-btn { width: 100%; }
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 18px 0 14px;
+            color: var(--wood);
+            font-weight: 700;
         }
-
-        button:hover {
-            background: linear-gradient(to bottom, #ffaa33, #ff7722);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 0 #cc5200;
+        .divider::before, .divider::after {
+            content: "";
+            flex: 1;
+            border-top: 2px dashed var(--sand-deep);
         }
-
-        button:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #cc5200;
+        .online-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
         }
-
-        input {
-            background-color: #ffe6cc;
-            color: #663300;
-            border: 2px solid #ff9900;
-            padding: 10px;
-            border-radius: 8px;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            font-size: 14px;
-            width: 150px;
-        }
-
-        input::placeholder {
-            color: #cc8800;
-        }
-
-        /* Styles pour les explosions */
-        .explosion-animation {
-            position: absolute;
-            background-color: rgba(255, 165, 0, 0.7);
-            border-radius: 50%;
-            animation: explode 0.5s ease-out;
-        }
-
-        @keyframes explode {
-            0% { transform: scale(0.5); opacity: 1; }
-            100% { transform: scale(1.5); opacity: 0; }
-        }
-
-        .gameButton {
-            background: linear-gradient(to bottom, #ff9900, #ff6600);
-            color: white;
-            padding: 12px 20px;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            margin: 8px;
-            cursor: pointer;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            box-shadow: 0 4px 0 #cc5200;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .gameButton:hover {
-            background: linear-gradient(to bottom, #ffaa33, #ff7722);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 0 #cc5200;
-        }
-
-        .gameButton:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #cc5200;
-        }
+        .online-row input { flex: 1 1 160px; }
 
         #gameInfo {
-            background-color: rgba(255, 215, 0, 0.3);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-weight: bold;
-            text-shadow: 1px 1px 0px #000;
-            letter-spacing: 1px;
+            min-height: 1.4em;
+            padding: 8px 18px;
+            border-radius: 999px;
+            background: var(--sand-light);
+            color: var(--ink);
+            font-weight: 700;
+            box-shadow: 0 3px 0 var(--sand-deep);
+            text-align: center;
         }
 
-        /* Styles pour les bonus */
-        .bonus {
+        /* Zone de jeu : fiches joueurs + plateau */
+        .arena {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 18px;
+            width: 100%;
+        }
+        .hud {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 190px;
+        }
+        .hud:empty { display: none; }
+
+        .player-card {
+            display: grid;
+            grid-template-columns: 52px 1fr;
+            gap: 4px 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 16px;
+            background: var(--sand-light);
+            color: var(--ink);
+            box-shadow: 0 4px 0 var(--sand-deep), 0 10px 20px rgba(0, 40, 60, .25);
+            border-left: 6px solid var(--accent, var(--wood));
+        }
+        .player-card.dead { opacity: .55; filter: grayscale(.8); }
+        .player-card .portrait { grid-row: span 2; width: 52px; height: 52px; }
+        .player-card .name { font-weight: 800; line-height: 1.1; }
+        .player-card .name small { display: block; font-weight: 600; color: var(--wood); }
+        .player-card .stats { display: flex; gap: 8px; font-weight: 800; }
+        .player-card .stat { display: flex; align-items: center; gap: 2px; }
+        .player-card .stat i { width: 20px; height: 20px; display: inline-block; }
+
+        .board-frame {
+            position: relative;
+            width: min(544px, calc(100vw - 32px), calc(100vh - 190px));
+            min-width: 300px;
+            aspect-ratio: 1;
+            border-radius: 22px;
+            box-shadow: 0 0 0 6px var(--sand-light), 0 0 0 10px var(--wood),
+                        0 22px 40px rgba(0, 30, 50, .45);
+            overflow: hidden;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Écran de fin, par-dessus le plateau */
+        #gameControls {
             position: absolute;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            animation: pulse 1s infinite alternate;
+            inset: 0;
+            background: rgba(6, 60, 80, .55);
+            backdrop-filter: blur(2px);
+            animation: fade-in .25s ease-out;
+        }
+        .end-card {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: min(360px, 86%);
+            text-align: center;
+            animation: pop-in .35s cubic-bezier(.2, 1.4, .4, 1);
+        }
+        #endTitle {
+            font-family: 'Pacifico', cursive;
+            font-size: 42px;
+            line-height: 1.2;
+            margin: 0 0 4px;
+        }
+        #endTitle.win { color: var(--palm-dark); }
+        #endTitle.lose { color: var(--sunset-dark); }
+        #endText { margin: 0 0 16px; font-weight: 700; }
+        .end-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+        .keys-hint {
+            color: #e8fbff;
+            font-weight: 600;
+            text-align: center;
+            text-shadow: 0 1px 2px rgba(0, 40, 60, .6);
         }
 
-        @keyframes pulse {
-            0% { transform: scale(0.9); }
-            100% { transform: scale(1.1); }
+        @media (max-width: 860px) {
+            .arena { flex-direction: column; align-items: center; }
+            .hud { flex-direction: row; width: 100%; flex-wrap: wrap; justify-content: center; gap: 8px; }
+            .player-card { width: calc(50% - 4px); max-width: 190px; grid-template-columns: 40px 1fr; padding: 8px 10px; }
+            /* le sprite est calé pour 52 px : on réduit le bloc entier */
+            .player-card .portrait { transform: scale(.77); transform-origin: left center; }
+            .player-card .stats { gap: 5px; font-size: 15px; }
+            .keys-hint { display: none; }
         }
 
-        /* Styles pour le panneau de debug (optionnel) */
         #debug {
             display: none;
             margin-top: 10px;
@@ -171,32 +174,52 @@
             border-radius: 5px;
             text-align: left;
             font-size: 12px;
-            max-height: 150px;
-            overflow-y: auto;
         }
     </style>
 </head>
 <body>
-    <div id="gameContainer">
-        <h1>Island Bomber</h1>
-        
-        <div id="roomControls">
-            <input type="text" id="roomInput" placeholder="Code de partie">
-            <button id="createBtn">Créer partie</button>
-            <button id="joinBtn">Rejoindre partie</button>
-            <button id="singlePlayerBtn">Affronter le Pirate IA</button>
+    <div class="ocean" aria-hidden="true"><div class="wave"></div><div class="wave wave2"></div></div>
+
+    <main class="app">
+        <header class="topbar">
+            <a href="index.html" class="logo">Island Bomber</a>
+            <a href="index.html" class="btn btn-small btn-ghost">Accueil</a>
+        </header>
+
+        <section id="roomControls" class="card">
+            <h2 class="card-title">Choisis ta partie</h2>
+            <button id="singlePlayerBtn" class="btn btn-primary btn-big solo-btn">Jouer contre l'IA</button>
+            <div class="divider">ou entre amis</div>
+            <div class="online-row">
+                <input type="text" id="roomInput" placeholder="Code de partie" autocomplete="off">
+                <button id="createBtn" class="btn">Créer</button>
+                <button id="joinBtn" class="btn btn-secondary">Rejoindre</button>
+            </div>
+        </section>
+
+        <div id="gameInfo">Bienvenue sur l'île !</div>
+
+        <div class="arena">
+            <aside id="hud" class="hud" aria-live="polite"></aside>
+            <div class="board-frame">
+                <canvas id="gameCanvas" width="544" height="544"></canvas>
+                <div id="gameControls" style="display: none;">
+                    <div class="end-card card">
+                        <p id="endTitle">Fin</p>
+                        <p id="endText"></p>
+                        <div class="end-actions">
+                            <button id="restartBtn" class="btn btn-primary">Rejouer</button>
+                            <button id="homeBtn" class="btn btn-secondary">Accueil</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <div id="gameInfo">Bienvenue sur l'île ! Prêt à exploser des noix de coco ?</div>
-        <canvas id="gameCanvas" width="480" height="480"></canvas>
-    </div>
 
-    <div id="gameControls" style="display: none; margin-top: 10px;">
-        <button id="restartBtn" class="gameButton">Nouvelle Partie</button>
-        <button id="homeBtn" class="gameButton">Retour à l'île</button>
-    </div>
+        <p class="keys-hint"><kbd>←</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> se déplacer · <kbd>Espace</kbd> poser une bombe</p>
+    </main>
 
-    <!-- Optionnel: Panneau de debug -->
+    <!-- Panneau de debug (caché) -->
     <div id="debug" style="display: none;">
         <div>IA - Position: <span id="aiGridX">0</span>, <span id="aiGridY">0</span> | Bombes: <span id="aiBombs">1</span> | Puissance: <span id="aiPower">2</span></div>
         <div>Joueur - Position: <span id="playerGridX">0</span>, <span id="playerGridY">0</span> | Bombes: <span id="playerBombs">1</span> | Puissance: <span id="playerPower">2</span></div>
@@ -343,6 +366,26 @@
         log("Récupération des références DOM");
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+
+        // Taille d'affichage : plateau + une case de mer de chaque côté.
+        // Le canvas est dimensionné à sa taille ÉCRAN réelle (x devicePixelRatio)
+        // pour que les sprites restent nets, puis tout est dessiné en
+        // coordonnées logiques via renderScale.
+        const BOARD_MARGIN = TILE_SIZE;
+        const VIEW_SIZE = GRID_SIZE * TILE_SIZE + 2 * BOARD_MARGIN; // 544
+        let renderScale = 1;
+
+        function resizeCanvas() {
+            const cssSize = canvas.getBoundingClientRect().width || VIEW_SIZE;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(cssSize * dpr);
+            canvas.height = Math.round(cssSize * dpr);
+            renderScale = canvas.width / VIEW_SIZE;
+            ctx.imageSmoothingQuality = 'high';
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
         const gameInfo = document.getElementById('gameInfo');
         const roomInput = document.getElementById('roomInput');
         const debugDiv = document.getElementById('debug');
@@ -524,7 +567,7 @@
                 // Si le joueur est mort
                 if (player && !player.alive) {
                     if (aiMoveInterval) clearInterval(aiMoveInterval);
-                    gameInfo.textContent = `Game Over - Le pirate a gagné !`;
+                    gameInfo.textContent = `Défaite - L'IA a gagné !`;
                     document.getElementById('gameControls').style.display = 'block';
                     return true;
                 }
@@ -532,7 +575,7 @@
                 // Si l'IA est morte
                 if (ai && !ai.alive) {
                     if (aiMoveInterval) clearInterval(aiMoveInterval);
-                    gameInfo.textContent = `Victoire - Vous avez battu le pirate !`;
+                    gameInfo.textContent = `Victoire - Vous avez battu l'IA !`;
                     document.getElementById('gameControls').style.display = 'block';
                     return true;
                 }
@@ -554,7 +597,7 @@
                 if (player1 && player2) {
                     if (!player1.alive) {
                         gameInfo.textContent = gameState.playerId === 'player1' ? 
-                            `Game Over - Le Surfeur Bleu a gagné !` : 
+                            `Défaite - Le joueur bleu a gagné !` : 
                             `Victoire - Vous avez gagné !`;
                         document.getElementById('gameControls').style.display = 'block';
                         return true;
@@ -562,7 +605,7 @@
                     
                     if (!player2.alive) {
                         gameInfo.textContent = gameState.playerId === 'player2' ? 
-                            `Game Over - Le Rasta Rouge a gagné !` : 
+                            `Défaite - Le joueur rouge a gagné !` : 
                             `Victoire - Vous avez gagné !`;
                         document.getElementById('gameControls').style.display = 'block';
                         return true;
@@ -663,22 +706,80 @@
             );
         }
 
-        // Dessiner le jeu
+        // Dessiner le jeu : la mer autour, puis le plateau décalé d'une
+        // case (BOARD_MARGIN). Toute la logique de jeu reste en coordonnées
+        // plateau (0..GRID_SIZE*TILE_SIZE) : seul le rendu est décalé.
         function render() {
-            // Effacer le canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Si pas de jeu en cours, afficher un écran d'attente
+            ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+            ctx.clearRect(0, 0, VIEW_SIZE, VIEW_SIZE);
+            renderSea();
+
+            ctx.save();
+            ctx.translate(BOARD_MARGIN, BOARD_MARGIN);
             if (!gameState.map || gameState.map.length === 0) {
-                ctx.fillStyle = '#006699';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = 'white';
-                ctx.font = '16px "Comic Sans MS"';
-                ctx.textAlign = 'center';
-                ctx.fillText('En attente de la création/connexion à une partie...', canvas.width/2, canvas.height/2);
+                // Pas encore de partie : l'île vide, le menu est dans la page
+                renderEmptyIsland();
+            } else {
+                renderBoard();
+            }
+            ctx.restore();
+        }
+
+        // Mer : fond animé + une rangée de tuiles d'eau dont l'écume est
+        // tournée vers l'île (le sprite a son écume sur le bord droit)
+        function renderSea() {
+            const now = Date.now();
+            ctx.fillStyle = '#3ec6cf';
+            ctx.fillRect(0, 0, VIEW_SIZE, VIEW_SIZE);
+            if (!spritesReady()) return;
+
+            const n = GRID_SIZE + 2;
+            const half = TILE_SIZE / 2;
+            // Léger ressac : l'écume avance et recule de 1,5 px
+            const surf = Math.sin(now / 700) * 1.5;
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) {
+                    const onEdge = i === 0 || j === 0 || i === n - 1 || j === n - 1;
+                    if (!onEdge) continue;
+                    const cx = i * TILE_SIZE + half;
+                    const cy = j * TILE_SIZE + half;
+                    const corner = (i === 0 || i === n - 1) && (j === 0 || j === n - 1);
+                    if (corner) {
+                        // Coin : eau seule (l'écume sort de la case, rognée)
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.rect(i * TILE_SIZE, j * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        ctx.clip();
+                        drawSprite('water', cx + TILE_SIZE * 0.3, cy, TILE_SIZE * 1.6);
+                        ctx.restore();
+                        continue;
+                    }
+                    // Rotation pour que l'écume (côté droit du sprite) touche l'île
+                    let rot = 0, ox = 0, oy = 0;
+                    if (i === 0) { rot = 0; ox = surf; }
+                    else if (i === n - 1) { rot = Math.PI; ox = -surf; }
+                    else if (j === 0) { rot = Math.PI / 2; oy = surf; }
+                    else { rot = -Math.PI / 2; oy = -surf; }
+                    drawSprite('water', cx + ox, cy + oy, TILE_SIZE + 0.6, TILE_SIZE + 0.6, rot);
+                }
+            }
+        }
+
+        function renderEmptyIsland() {
+            if (!spritesReady()) {
+                ctx.fillStyle = '#f6dca3';
+                ctx.fillRect(0, 0, GRID_SIZE * TILE_SIZE, GRID_SIZE * TILE_SIZE);
                 return;
             }
-            
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    drawSprite('sand', x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE + 0.5);
+                }
+            }
+        }
+
+        // Plateau de jeu (coordonnées plateau)
+        function renderBoard() {
             // Dessiner la carte
             if (spritesReady()) renderMapSprites();
             else for (let y = 0; y < GRID_SIZE; y++) {
@@ -2165,12 +2266,13 @@
                 gameRef.child('gameStarted').set(true);
                 
                 // Rejoindre la partie
-                joinGame(roomId, 'player2');
+                // On vient de vérifier que player1 est là : pas seul dès le départ
+                joinGame(roomId, 'player2', false);
             });
         }
 
         // Supprimer l'ancienne partie de Firebase avant d'en créer une nouvelle.
-        // Sans ça, chaque "Nouvelle Partie"/"Affronter le Pirate IA" laissait
+        // Sans ça, chaque "Nouvelle Partie"/"Jouer contre l'IA" laissait
         // le nœud `games/solo_xxx` précédent dans la base indéfiniment (le
         // redémarrage dans le même onglet ne déclenche pas onDisconnect()).
         function cleanupCurrentGame() {
@@ -2217,7 +2319,7 @@
             
             // Rejoindre la partie
             joinGame(roomId, 'player1');
-            gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
+            gameInfo.textContent = `Partie solo contre l'IA - Vous êtes le joueur rouge`;
             
             // Démarrer l'IA
             startAI();
@@ -2242,7 +2344,11 @@
         }
 
         // Rejoindre une partie et configurer les écouteurs
-        function joinGame(roomId, playerId) {
+        // alone : suis-je le seul humain au moment de rejoindre ? Sert à
+        // programmer la bonne suppression à la déconnexion AVANT le premier
+        // retour Firebase (sinon un joueur qui rejoint puis part aussitôt
+        // supprimait la partie de l'autre).
+        function joinGame(roomId, playerId, alone = true) {
             log(`Rejoindre la partie ${roomId} en tant que ${playerId}`);
             const gameRef = database.ref(`games/${roomId}`);
             
@@ -2317,9 +2423,9 @@
                 // Afficher un message quand le jeu commence
                 if (gameState.gameStarted) {
                     if (aiMode) {
-                        gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
+                        gameInfo.textContent = `Partie solo contre l'IA - Vous êtes le joueur rouge`;
                     } else if (gameData.players.player1 && gameData.players.player2) {
-                        gameInfo.textContent = `Combat sur l'île - Vous êtes le ${playerId === 'player1' ? 'Rasta Rouge' : 'Surfeur Bleu'}`;
+                        gameInfo.textContent = `Partie en ligne - Vous êtes le joueur ${playerId === 'player1' ? 'rouge' : 'bleu'}`;
                     }
                 }
             });
@@ -2334,7 +2440,7 @@
                 database.ref('.info/connected').off('value', connectedListener);
             }
             disconnectAlone = null;
-            lastKnownAlone = true;
+            lastKnownAlone = alone;
             connectedListener = (snapshot) => {
                 if (snapshot.val() === false) return;
                 // Les onDisconnect sont consommés côté serveur à chaque
@@ -2381,7 +2487,7 @@
                 
                 // Rejoindre la partie
                 joinGame(roomId, 'player1');
-                gameInfo.textContent = `Survivez sur l'île contre le pirate IA - Vous êtes le Rasta Rouge`;
+                gameInfo.textContent = `Partie solo contre l'IA - Vous êtes le joueur rouge`;
                 
                 // Démarrer l'IA
                 startAI();
@@ -2506,9 +2612,77 @@
         }
 
         // Boucle de jeu principale
+        //--------------------------------------------------
+        // INTERFACE : fiches joueurs + écran de fin
+        //--------------------------------------------------
+
+        // Style CSS affichant le sprite `name` de l'atlas à `size` px
+        function spriteCss(name, size) {
+            const atlas = window.SPRITE_ATLAS;
+            if (!atlas || !atlas.frames[name]) return '';
+            const k = size / atlas.size;
+            const [x, y] = atlas.frames[name];
+            return `background-image:url(assets/sprites.png);` +
+                `background-size:${1024 * k}px ${384 * k}px;` +
+                `background-position:-${x * k}px -${y * k}px;`;
+        }
+
+        const PLAYER_LABELS = {
+            player1: { name: 'Joueur rouge', accent: 'var(--red)' },
+            player2: { name: 'Joueur bleu', accent: 'var(--blue)' },
+            [aiPlayerId]: { name: "L'IA", accent: 'var(--ai)' }
+        };
+
+        let lastHudKey = '';
+
+        // Mis à jour à chaque image, mais le DOM n'est réécrit que si
+        // quelque chose a changé (stats, vivant/mort, partie en cours)
+        function updateHud() {
+            const hud = document.getElementById('hud');
+            const ids = gameState.roomId ? Object.keys(gameState.players).sort((a, b) =>
+                (a === gameState.playerId ? -1 : 0) - (b === gameState.playerId ? -1 : 0)) : [];
+            const key = ids.map(id => {
+                const p = gameState.players[id];
+                return [id, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier].join(':');
+            }).join('|') + (window.SPRITE_ATLAS ? 's' : '');
+            if (key !== lastHudKey) {
+                lastHudKey = key;
+                hud.innerHTML = ids.map(id => {
+                    const p = gameState.players[id];
+                    const label = PLAYER_LABELS[id] || { name: id, accent: 'var(--wood)' };
+                    const speed = Math.round(((p.speedMultiplier || 1) - 1) / 0.2);
+                    const you = id === gameState.playerId ? '<small>vous</small>' : '<small>&nbsp;</small>';
+                    return `<div class="player-card${p.alive ? '' : ' dead'}" style="--accent:${label.accent}">
+                        <span class="portrait sprite" style="${spriteCss(skinOf(id) + '_down_0', 52)}"></span>
+                        <div class="name">${label.name}${you}</div>
+                        <div class="stats">
+                            <span class="stat" title="Bombes"><i class="sprite" style="${spriteCss('bonus_bomb', 20)}"></i>${p.maxBombs}</span>
+                            <span class="stat" title="Portée"><i class="sprite" style="${spriteCss('bonus_power', 20)}"></i>${p.bombRange}</span>
+                            <span class="stat" title="Vitesse"><i class="sprite" style="${spriteCss('bonus_speed', 20)}"></i>${speed}</span>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            // Écran de fin : titre et texte tirés du message de gameInfo
+            // (« Victoire - … », « Défaite - … », « L'adversaire a quitté… »)
+            const endScreen = document.getElementById('gameControls');
+            if (endScreen.style.display !== 'none') {
+                const msg = gameInfo.textContent;
+                const [head, ...rest] = msg.split(' - ');
+                const title = document.getElementById('endTitle');
+                const win = head.startsWith('Victoire');
+                const lose = head.startsWith('Défaite');
+                title.textContent = win || lose ? head : 'Partie terminée';
+                title.className = win ? 'win' : lose ? 'lose' : '';
+                document.getElementById('endText').textContent = win || lose ? rest.join(' - ') : msg;
+            }
+        }
+
         function gameLoop() {
             update();
             render();
+            updateHud();
             requestAnimationFrame(gameLoop);
         }
 

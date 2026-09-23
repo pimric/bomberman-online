@@ -4,217 +4,225 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Island Bomber</title>
-    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <meta name="description" content="Island Bomber : un Bomberman sur une île tropicale, en solo contre l'IA ou entre amis.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Pacifico&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/ile.css">
     <style>
-        /* Styles pour la page d'accueil Island Bomber */
-        body {
-            background: linear-gradient(135deg, #0099cc, #006699);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            color: white;
-            background-image: url('https://cdnjs.cloudflare.com/ajax/libs/line-awesome/1.3.0/svg/palm-tree.svg');
-            background-repeat: repeat;
-            background-size: 100px;
-            background-blend-mode: soft-light;
-        }
-
-        .container {
-            text-align: center;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-            border: 3px solid #ffd700;
-            max-width: 800px;
+        .page {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
             margin: 0 auto;
-        }
-
-        .title {
-            font-family: 'Pacifico', cursive;
-            font-size: 36px;
-            color: #ffd700;
-            margin: 20px 0;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            text-shadow: 3px 3px 0px #000;
-        }
-
-        .subtitle {
-            font-size: 18px;
-            color: #4ecdc4;
-            margin-bottom: 30px;
-        }
-
-        .play-button {
-            display: inline-block;
-            background: linear-gradient(to bottom, #ff9900, #ff6600);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            font-size: 20px;
-            margin: 20px 0;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            font-weight: bold;
-            text-transform: uppercase;
-            box-shadow: 0 4px 0 #cc5200;
-            transition: all 0.2s;
-            text-decoration: none;
-        }
-
-        .play-button:hover {
-            background: linear-gradient(to bottom, #ffaa33, #ff7722);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 0 #cc5200;
-        }
-
-        .play-button:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #cc5200;
-        }
-
-        .game-status {
-            background-color: #333;
-            color: #4ecdc4;
-            margin-top: 20px;
-            padding: 10px;
-            border-radius: 8px;
-        }
-
-        .info-box {
-            background-color: #222;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 30px 0;
-            text-align: left;
-        }
-
-        h2, .section-title {
-            color: #ff6b6b;
-            border-bottom: 1px solid #333;
-            padding-bottom: 5px;
-            margin-top: 20px;
-        }
-
-        h3 {
-            color: #4ecdc4;
-            margin-top: 15px;
-        }
-
-        .controls {
+            padding: 28px 16px 48px;
             display: flex;
-            flex-wrap: wrap;
-            justify-content: space-around;
-            margin: 20px 0;
+            flex-direction: column;
+            align-items: center;
+            gap: 22px;
         }
 
-        .control-group {
-            margin: 10px;
-            min-width: 200px;
-            background-color: rgba(34, 139, 34, 0.7);
-            padding: 15px;
-            border-radius: 10px;
-            border: 2px dashed #ffd700;
+        .hero-title {
+            font-size: clamp(48px, 11vw, 88px);
+            margin: 0;
+            text-align: center;
+        }
+        .tagline {
+            margin: -8px 0 0;
+            color: var(--foam);
+            font-size: clamp(17px, 3vw, 21px);
+            font-weight: 700;
+            text-align: center;
+            text-shadow: 0 1px 3px rgba(0, 40, 60, .5);
         }
 
-        .footer {
-            margin-top: 40px;
-            font-size: 12px;
-            color: #ffffff;
+        /* Bande de plage animée */
+        .scene {
+            width: 100%;
+            max-width: 720px;
+            border-radius: 22px;
+            overflow: hidden;
+            box-shadow: 0 0 0 6px var(--sand-light), 0 0 0 10px var(--wood),
+                        0 22px 40px rgba(0, 30, 50, .45);
+            line-height: 0;
+        }
+        .scene canvas { width: 100%; height: auto; display: block; }
+
+        .play { font-size: 26px; padding: 16px 48px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            width: 100%;
+        }
+        .grid .card h2 { margin: 0 0 10px; }
+        .grid .card p { margin: 6px 0; }
+
+        .modes li, .bonuses li { margin: 8px 0; }
+        .modes, .bonuses { list-style: none; padding: 0; margin: 0; }
+        .modes strong { color: var(--wood); }
+
+        .bonuses li {
+            display: grid;
+            grid-template-columns: 40px 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+        .bonuses .sprite { width: 40px; height: 40px; }
+        .bonuses strong { display: block; line-height: 1.1; }
+        .bonuses span.desc { font-size: 15px; color: #6b4a2a; }
+
+        .keys p { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+        footer {
+            color: var(--foam);
+            font-size: 14px;
+            opacity: .85;
         }
 
-        /* Adaptations pour les mobiles */
-        @media (max-width: 600px) {
-            .container {
-                padding: 10px;
-                width: 90%;
-            }
-            
-            .title {
-                font-size: 28px;
-            }
-            
-            .play-button {
-                padding: 12px 25px;
-            }
-            
-            .control-group {
-                min-width: 100%;
-            }
+        @media (max-width: 640px) {
+            .grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="title">Island Bomber</h1>
-        <p class="subtitle">Explosez vos adversaires dans ce jeu multijoueur inspiré du classique Bomberman!</p>
-        
-        <a href="game.html" class="play-button">JOUER MAINTENANT</a>
-        
-        <div class="game-status">
-            <strong>Statut du jeu:</strong>
-            <span id="status-indicator">Vérification de la connexion...</span>
+    <div class="ocean" aria-hidden="true"><div class="wave"></div><div class="wave wave2"></div></div>
+
+    <main class="page">
+        <h1 class="logo hero-title">Island Bomber</h1>
+        <p class="tagline">Des bombes, du sable chaud et des tonneaux à faire sauter.</p>
+
+        <div class="scene"><canvas id="scene" width="720" height="240" aria-label="Trois vacanciers se promènent sur la plage"></canvas></div>
+
+        <a href="game.html" class="btn btn-primary play">Jouer</a>
+
+        <div class="grid">
+            <section class="card">
+                <h2 class="card-title">Deux façons de jouer</h2>
+                <ul class="modes">
+                    <li><strong>Solo</strong> contre l'IA : elle pose des bombes, fuit les explosions et ramasse les bonus.</li>
+                    <li><strong>Entre amis</strong> : crée une partie, partage son code, ton ami la rejoint depuis son navigateur.</li>
+                </ul>
+            </section>
+
+            <section class="card keys">
+                <h2 class="card-title">Commandes</h2>
+                <p><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> se déplacer case par case</p>
+                <p><kbd>Espace</kbd> poser une bombe</p>
+                <p>Le dernier sur l'île a gagné. Attention : les flammes brûlent tant qu'elles sont là.</p>
+            </section>
+
+            <section class="card" style="grid-column: 1 / -1">
+                <h2 class="card-title">Bonus cachés dans les tonneaux</h2>
+                <ul class="bonuses">
+                    <li><i class="sprite" data-sprite="bonus_bomb"></i><div><strong>Bombe +1</strong><span class="desc">Une bombe de plus posée en même temps</span></div></li>
+                    <li><i class="sprite" data-sprite="bonus_power"></i><div><strong>Portée +1</strong><span class="desc">Les flammes vont une case plus loin</span></div></li>
+                    <li><i class="sprite" data-sprite="bonus_speed"></i><div><strong>Vitesse +</strong><span class="desc">Des pas plus rapides sur le sable</span></div></li>
+                </ul>
+            </section>
         </div>
-        
-        <div class="info-box">
-            <h2 class="section-title">À propos du jeu</h2>
-            <p>Island Bomber est un jeu de type Bomberman où vous pouvez:</p>
-            <ul>
-                <li>Jouer en solo contre une IA</li>
-                <li>Jouer en multijoueur avec vos amis</li>
-                <li>Créer et partager des parties via un code unique</li>
-                <li>Collecter des bonus pour améliorer vos capacités</li>
-            </ul>
-            
-            <h2 class="section-title">Comment jouer</h2>
-            <div class="controls">
-                <div class="control-group">
-                    <h3>Joueur</h3>
-                    <p>Déplacement: Flèches directionnelles</p>
-                    <p>Poser bombe: ESPACE</p>
-                </div>
-                
-                <div class="control-group">
-                    <h3>Bonus</h3>
-                    <p><span style="color: #f5a623;">●</span> Bombe+ : Augmente le nombre de bombes</p>
-                    <p><span style="color: #ff5252;">●</span> Puissance+ : Augmente la portée des explosions</p>
-                    <p><span style="color: #7ed321;">●</span> Vitesse+ : Augmente la vitesse de déplacement</p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p>Développé par pimric © 2025</p>
-        </div>
-    </div>
-    
+
+        <footer>Développé par pimric</footer>
+    </main>
+
+    <script src="assets/sprites.js"></script>
     <script>
-        // Script pour vérifier si le jeu est fonctionnel
-        window.addEventListener('DOMContentLoaded', function() {
-            const statusIndicator = document.getElementById('status-indicator');
-            
-            // Vérifier si on peut accéder à game.html
-            fetch('game.html')
-                .then(response => {
-                    if (response.ok) {
-                        statusIndicator.textContent = 'Le jeu est opérationnel! ✅';
-                        statusIndicator.style.color = '#4ecdc4';
-                    } else {
-                        statusIndicator.textContent = 'Problème d\'accès au jeu ❌';
-                        statusIndicator.style.color = '#ff6b6b';
-                    }
-                })
-                .catch(error => {
-                    statusIndicator.textContent = 'Impossible de se connecter au jeu ❌';
-                    statusIndicator.style.color = '#ff6b6b';
-                    console.error('Erreur:', error);
-                });
+        // Icônes des bonus tirées de l'atlas
+        document.querySelectorAll('[data-sprite]').forEach(el => {
+            const atlas = window.SPRITE_ATLAS;
+            if (!atlas) return;
+            const size = el.getBoundingClientRect().width || 40;
+            const k = size / atlas.size;
+            const [x, y] = atlas.frames[el.dataset.sprite];
+            el.style.backgroundImage = 'url(assets/sprites.png)';
+            el.style.backgroundSize = `${1024 * k}px ${384 * k}px`;
+            el.style.backgroundPosition = `-${x * k}px -${y * k}px`;
         });
+
+        // Scène : une bande de plage (mer / sable / mer), trois vacanciers
+        // qui se promènent, une bombe qui finit par exploser de temps en temps
+        (function scene() {
+            const canvas = document.getElementById('scene');
+            const ctx = canvas.getContext('2d');
+            const atlas = window.SPRITE_ATLAS;
+            const sheet = new Image();
+            sheet.src = 'assets/sprites.png';
+
+            const T = 48;                  // taille d'une case dans la scène
+            const COLS = 15, ROWS = 5;     // 720 x 240
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+            function draw(name, cx, cy, w, h = w, rot = 0, alpha = 1) {
+                const p = atlas.frames[name];
+                if (!p) return;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.translate(cx, cy);
+                if (rot) ctx.rotate(rot);
+                ctx.drawImage(sheet, p[0], p[1], atlas.size, atlas.size, -w / 2, -h / 2, w, h);
+                ctx.restore();
+            }
+
+            const palms = [[2, 1], [6, 3], [11, 1], [13, 3]];
+            const barrels = [[4, 1], [9, 3], [12, 2]];
+            const walkers = [
+                { skin: 'red', row: 2, speed: 42, offset: 0 },
+                { skin: 'blue', row: 1, speed: -34, offset: 300 },
+                { skin: 'ai', row: 3, speed: 28, offset: 520 }
+            ];
+
+            function frame(now) {
+                const t = reduced ? 0 : now / 1000;
+                // mer
+                ctx.fillStyle = '#3ec6cf';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                const surf = reduced ? 0 : Math.sin(now / 700) * 2;
+                for (let x = 0; x < COLS; x++) {
+                    draw('water', x * T + T / 2, T / 2 + surf, T + 1, T + 1, Math.PI / 2);
+                    draw('water', x * T + T / 2, (ROWS - 1) * T + T / 2 - surf, T + 1, T + 1, -Math.PI / 2);
+                }
+                // plage
+                for (let y = 1; y < ROWS - 1; y++) {
+                    for (let x = 0; x < COLS; x++) draw('sand', x * T + T / 2, y * T + T / 2, T + 1);
+                }
+                barrels.forEach(([x, y]) => draw('barrel', x * T + T / 2, y * T + T / 2, T * 0.95));
+
+                // bombe sur un cycle de 4 s : 3 s de mèche, 1 s d'explosion
+                const cycle = t % 4;
+                const bx = 8 * T + T / 2, by = 2 * T + T / 2;
+                if (cycle < 3) {
+                    draw('bomb', bx, by, T * 0.85 * (1 + 0.08 * Math.sin(now / (cycle > 2 ? 60 : 160))));
+                } else {
+                    const k = cycle - 3;
+                    const alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+                    const grow = Math.min(1, k * 6);
+                    draw('flame_center', bx, by, T * 1.15 * grow, T * 1.15 * grow, 0, alpha);
+                    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) =>
+                        draw('flame_end', bx + dx * T, by + dy * T, T + 1, T * 0.9 * grow, Math.atan2(dy, dx), alpha));
+                }
+
+                // vacanciers (triés par ligne pour le chevauchement)
+                walkers.forEach(w => {
+                    const span = canvas.width + T * 2;
+                    let x = ((w.offset + t * w.speed) % span + span) % span - T;
+                    const dir = w.speed > 0 ? 'right' : 'left';
+                    const count = atlas.walk[dir];
+                    const f = reduced ? 0 : Math.floor(now / 110) % count;
+                    const cy = w.row * T + T / 2;
+                    ctx.fillStyle = 'rgba(0,0,0,.22)';
+                    ctx.beginPath();
+                    ctx.ellipse(x, cy + T * 0.42, T * 0.28, T * 0.09, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    const size = T * 1.25;
+                    draw(`${w.skin}_${dir}_${f}`, x, cy + T / 2 - size / 2 + 1, size);
+                });
+                palms.forEach(([x, y]) => draw('palm', x * T + T / 2, y * T + T / 2, T * 1.1));
+
+                if (!reduced) requestAnimationFrame(frame);
+            }
+
+            if (atlas) sheet.onload = () => requestAnimationFrame(frame);
+        })();
     </script>
 </body>
 </html>

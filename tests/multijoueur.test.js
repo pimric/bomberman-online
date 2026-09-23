@@ -22,7 +22,7 @@ const server = http.createServer((req, res) => {
     const file = path.join(GAME_DIR, decodeURIComponent(req.url.split('?')[0]) || '/');
     fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404); return res.end(); }
-        res.writeHead(200, { 'Content-Type': ({ '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png' })[path.extname(file)] || 'application/octet-stream' });
+        res.writeHead(200, { 'Content-Type': ({ '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.css': 'text/css' })[path.extname(file)] || 'application/octet-stream' });
         res.end(data);
     });
 });
@@ -176,7 +176,7 @@ const gridOf = (page, id) => page.evaluate(id => {
 
         const infoA = await A.page.$eval('#gameInfo', e => e.textContent);
         const infoB = await B.page.$eval('#gameInfo', e => e.textContent);
-        check('Écran de fin correct des deux côtés', infoA.includes('Victoire') && infoB.includes('Game Over'),
+        check('Écran de fin correct des deux côtés', infoA.includes('Victoire') && infoB.includes('Défaite'),
             `A="${infoA}" / B="${infoB}"`);
     } catch (e) {
         check('Déroulement du test', false, e.message);
@@ -215,11 +215,17 @@ async function scenarioSolo() {
                 if (s.val().playerId === aiPlayerId) window.__aiBombs++;
             });
         });
-        await sleep(8000);
-        const end = await gridOf(P.page, 'playerAI');
+        // Cases visitées (pas seulement départ/arrivée : dans son coin, l'IA
+        // pose, se met à l'abri en diagonale puis revient sur sa case)
+        const visited = new Set([`${start.x},${start.y}`]);
+        for (let i = 0; i < 40; i++) {
+            await sleep(200);
+            const g = await gridOf(P.page, 'playerAI');
+            if (g) visited.add(`${g.x},${g.y}`);
+        }
         const bombs = await P.page.evaluate(() => window.__aiBombs);
-        check('Solo : l\'IA se déplace', start.x !== end.x || start.y !== end.y,
-            `(${start.x},${start.y}) → (${end.x},${end.y})`);
+        check('Solo : l\'IA se déplace', visited.size >= 2,
+            `${visited.size} case(s) visitée(s) en 8s : ${[...visited].join(' ')}`);
         check('Solo : l\'IA pose des bombes', bombs > 0, `${bombs} bombe(s) en 8s`);
     } catch (e) {
         check('Déroulement du scénario solo', false, e.message);
