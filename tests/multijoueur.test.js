@@ -9,6 +9,7 @@ const GAME_DIR = path.join(__dirname, '..');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PORT = 8765;
 const ROOM = 'mptest_' + Date.now();
+const TILE = 32; // TILE_SIZE du jeu
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -94,6 +95,44 @@ const gridOf = (page, id) => page.evaluate(id => {
             check('Déplacement de player1 synchronisé chez B', false, 'aucune case libre à côté du spawn');
         }
 
+        // --- Affichage lissé de player2 chez A pendant que B marche ---------
+        const bKey = await B.page.evaluate(() =>
+            isGridAccessible(13, 14) ? 'ArrowLeft' : (isGridAccessible(14, 13) ? 'ArrowUp' : null));
+        if (bKey) {
+            const samplesPromise = A.page.evaluate(() => new Promise(resolve => {
+                const pts = [];
+                const start = performance.now();
+                (function frame() {
+                    const p = gameState.players.player2;
+                    pts.push(getDisplayPosition('player2', p));
+                    if (performance.now() - start < 1500) requestAnimationFrame(frame);
+                    else resolve({ pts, final: { x: p.x, y: p.y } });
+                })();
+            }));
+            await sleep(250); // laisser l'échantillonnage démarrer avant que B bouge
+            await B.page.keyboard.down(bKey);
+            await sleep(450); // ~2 cases
+            await B.page.keyboard.up(bKey);
+            const { pts, final } = await samplesPromise;
+            let maxJump = 0;
+            for (let i = 1; i < pts.length; i++) {
+                maxJump = Math.max(maxJump, Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+            }
+            const last = pts[pts.length - 1];
+            const moved = Math.hypot(last.x - pts[0].x, last.y - pts[0].y);
+            // Sans lissage : sauts de ~16px (une demi-case par sync de 100ms)
+            check('Adversaire affiché sans sauts chez A', moved >= 32 && maxJump <= 8,
+                `déplacement affiché=${moved.toFixed(0)}px, plus grand saut=${maxJump.toFixed(1)}px sur ${pts.length} images`);
+            check('Affichage lissé rejoint la vraie position',
+                Math.hypot(last.x - final.x, last.y - final.y) < 1,
+                `affiché=(${last.x.toFixed(0)},${last.y.toFixed(0)}) réel=(${final.x},${final.y})`);
+            check('Position finale de player2 reçue au centre d’une case',
+                (final.x - TILE / 2) % TILE === 0 && (final.y - TILE / 2) % TILE === 0,
+                `réel=(${final.x},${final.y})`);
+        } else {
+            check('Adversaire affiché sans sauts chez A', false, 'aucune case libre à côté du spawn de B');
+        }
+
         // --- Bombe de A : visible chez B, explose UNE fois, tue B dans la flamme
         const bombCell = await gridOf(A.page, 'player1');
         await A.page.keyboard.press(' ');
@@ -149,9 +188,95 @@ const gridOf = (page, id) => page.evaluate(id => {
         await A.page.evaluate(room => database.ref(`games/${room}`).remove(), ROOM).catch(() => {});
         await A.browser.close();
         await B.browser.close();
-        server.close();
-        const failed = results.filter(r => !r.ok).length;
-        console.log(`\n${results.length - failed}/${results.length} tests OK — salle ${ROOM} supprimée`);
-        process.exit(failed ? 1 : 0);
     }
+
+    await scenarioDeconnexion();
+    await scenarioSolo();
+
+    server.close();
+    const failed = results.filter(r => !r.ok).length;
+    console.log(`\n${results.length - failed}/${results.length} tests OK — salles de test supprimées`);
+    process.exit(failed ? 1 : 0);
 })();
+
+// Fumée du mode solo : la partie démarre, l'IA bouge et pose des bombes,
+// sans erreur JS ; la salle solo est supprimée en quittant.
+async function scenarioSolo() {
+    const P = await openPlayer('Solo');
+    let room = null;
+    try {
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && gameState.players[aiPlayerId], { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        const start = await gridOf(P.page, 'playerAI');
+        await P.page.evaluate(() => {
+            window.__aiBombs = 0;
+            database.ref(`games/${gameState.roomId}/bombs`).on('child_added', s => {
+                if (s.val().playerId === aiPlayerId) window.__aiBombs++;
+            });
+        });
+        await sleep(8000);
+        const end = await gridOf(P.page, 'playerAI');
+        const bombs = await P.page.evaluate(() => window.__aiBombs);
+        check('Solo : l\'IA se déplace', start.x !== end.x || start.y !== end.y,
+            `(${start.x},${start.y}) → (${end.x},${end.y})`);
+        check('Solo : l\'IA pose des bombes', bombs > 0, `${bombs} bombe(s) en 8s`);
+    } catch (e) {
+        check('Déroulement du scénario solo', false, e.message);
+    } finally {
+        check('Aucune erreur JS en solo', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        P.logs.forEach(l => console.log(`   [Solo] ${l}`));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
+}
+
+// Un joueur quitte en cours de partie : l'autre doit garder la partie et être
+// prévenu ; quand le dernier part, la partie doit disparaître de Firebase.
+async function scenarioDeconnexion() {
+    const room = ROOM + '_deco';
+    const A = await openPlayer('A2(player1)');
+    const B = await openPlayer('B2(player2)');
+    let observer = null;
+    try {
+        await A.page.type('#roomInput', room);
+        await A.page.click('#createBtn');
+        await A.page.waitForFunction(() => gameState.players.player1, { timeout: 10000 });
+        await B.page.type('#roomInput', room);
+        await B.page.click('#joinBtn');
+        await A.page.waitForFunction(() => gameState.gameStarted && gameState.players.player2, { timeout: 10000 });
+
+        await B.browser.close(); // B ferme brutalement sa page
+        await A.page.waitForFunction(() => !gameState.players.player2, { timeout: 10000 })
+            .then(() => check('Départ de B détecté chez A', true))
+            .catch(() => check('Départ de B détecté chez A', false, 'player2 toujours présent après 10s'));
+
+        await sleep(300);
+        const infoA = await A.page.$eval('#gameInfo', e => e.textContent);
+        check('A est prévenu que l\'adversaire a quitté', infoA.includes('quitté'), `A="${infoA}"`);
+
+        const stillThere = await A.page.evaluate(r =>
+            database.ref(`games/${r}/map`).once('value').then(s => s.exists()), room);
+        check('La partie existe toujours après le départ de B', stillThere);
+
+        // A part à son tour : il était le dernier, la partie doit être supprimée
+        await A.browser.close();
+        observer = await openPlayer('observateur');
+        let gone = false;
+        for (let i = 0; i < 20 && !gone; i++) {
+            gone = await observer.page.evaluate(r =>
+                database.ref(`games/${r}`).once('value').then(s => !s.exists()), room);
+            if (!gone) await sleep(500);
+        }
+        check('La partie est supprimée quand le dernier joueur part', gone);
+    } catch (e) {
+        check('Déroulement du scénario déconnexion', false, e.message);
+    } finally {
+        for (const P of [A, B]) {
+            check(`Aucune erreur JS chez ${P.label}`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        }
+        const cleaner = observer || await openPlayer('nettoyage');
+        await cleaner.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        for (const P of [A, B, cleaner]) await P.browser.close().catch(() => {});
+    }
+}

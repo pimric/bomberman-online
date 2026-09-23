@@ -259,6 +259,16 @@
         let lastPositionSync = 0;
         let lastAiPositionSync = 0;
 
+        // Lissage de l'affichage des joueurs distants (voir getDisplayPosition)
+        const REMOTE_CATCHUP = 1.3;                 // vitesse d'affichage = vitesse de marche x 1.3
+        const REMOTE_SNAP_DISTANCE = TILE_SIZE * 3; // au-delà : téléport direct
+        const remoteDisplay = {};
+
+        // Gestion des déconnexions (voir applyDisconnectPolicy)
+        let connectedListener = null; // écouteur .info/connected de la partie en cours
+        let disconnectAlone = null;   // politique actuellement programmée côté serveur
+        let lastKnownAlone = true;    // dernier état « seul humain présent » observé
+
         // Configuration des bonus
         const BONUS_PROBABILITY = 0.5; // 50% de chance qu'un tonneau détruit laisse un bonus
         const BONUS_DURATION = 15000; // Les bonus restent 15 secondes sur la carte
@@ -530,7 +540,15 @@
             else {
                 const player1 = gameState.players['player1'];
                 const player2 = gameState.players['player2'];
-                
+
+                // La partie n'a démarré qu'avec les deux joueurs : si l'un
+                // manque maintenant, c'est qu'il a quitté (onDisconnect)
+                if (!player1 || !player2) {
+                    gameInfo.textContent = `L'adversaire a quitté la partie`;
+                    document.getElementById('gameControls').style.display = 'block';
+                    return true;
+                }
+
                 // Si les deux joueurs sont présents et que l'un est mort
                 if (player1 && player2) {
                     if (!player1.alive) {
@@ -584,7 +602,10 @@
             // Mettre à jour la position sur Firebase si le joueur a bougé
             // (throttlée pour ne pas envoyer une écriture réseau à chaque frame,
             // ce qui rendait le déplacement saccadé)
-            if (playerMoved && now - lastPositionSync >= POSITION_SYNC_INTERVAL) {
+            // Toujours envoyer l'arrivée d'un pas (moving repasse à false) : sinon, si
+            // elle tombe dans la fenêtre de throttle, l'autre onglet garde une
+            // position à cheval entre deux cases jusqu'au mouvement suivant.
+            if (playerMoved && (!player.moving || now - lastPositionSync >= POSITION_SYNC_INTERVAL)) {
                 lastPositionSync = now;
                 database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
                     x: player.x,
@@ -605,7 +626,7 @@
                 const aiPlayer = gameState.players[aiPlayerId];
                 if (aiPlayer && aiPlayer.alive) {
                     const aiMoved = advanceEntityMovement(aiPlayer, now);
-                    if (aiMoved && now - lastAiPositionSync >= POSITION_SYNC_INTERVAL) {
+                    if (aiMoved && (!aiPlayer.moving || now - lastAiPositionSync >= POSITION_SYNC_INTERVAL)) {
                         lastAiPositionSync = now;
                         database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
                             x: aiPlayer.x,
@@ -720,8 +741,10 @@
             
             // Dessiner les joueurs
             for (const playerId in gameState.players) {
-                const playerData = gameState.players[playerId];
-                if (playerData && playerData.alive) {
+                const rawPlayer = gameState.players[playerId];
+                if (rawPlayer && rawPlayer.alive) {
+                    // Position affichée (lissée pour les joueurs distants)
+                    const playerData = { ...rawPlayer, ...getDisplayPosition(playerId, rawPlayer) };
                     // Fond du joueur
                     ctx.fillStyle = playerData.color;
                     ctx.beginPath();
@@ -752,6 +775,40 @@
 
             // Dessiner les textes flottants (ex: "+1 Bombe" à la collecte d'un bonus)
             renderFloatingTexts();
+        }
+
+        // Position à dessiner pour un joueur. Entités locales : position réelle.
+        // Joueur distant : sa position n'arrive que toutes les
+        // POSITION_SYNC_INTERVAL ms, l'afficher telle quelle le faisait avancer
+        // par sauts. On fait glisser un point d'affichage vers la dernière
+        // position reçue, à sa vitesse de marche (un peu plus vite pour
+        // rattraper le retard), et on téléporte si l'écart est aberrant
+        // (spawn, nouvelle partie). Purement visuel : aucune logique de jeu
+        // ne lit ces positions (chaque onglet n'a autorité que sur les siennes).
+        function getDisplayPosition(playerId, player) {
+            if (localEntityIds().includes(playerId)) {
+                return { x: player.x, y: player.y };
+            }
+
+            const now = performance.now();
+            let d = remoteDisplay[playerId];
+            const dx = player.x - (d ? d.x : player.x);
+            const dy = player.y - (d ? d.y : player.y);
+            const dist = Math.hypot(dx, dy);
+
+            if (!d || dist > REMOTE_SNAP_DISTANCE) {
+                d = remoteDisplay[playerId] = { x: player.x, y: player.y, t: now };
+                return { x: d.x, y: d.y };
+            }
+
+            const speed = TILE_SIZE / (MOVE_DURATION / (player.speedMultiplier || 1)) * REMOTE_CATCHUP;
+            const stepLen = Math.min(dist, speed * (now - d.t));
+            if (dist > 0) {
+                d.x += dx / dist * stepLen;
+                d.y += dy / dist * stepLen;
+            }
+            d.t = now;
+            return { x: d.x, y: d.y };
         }
 
         // Dessiner les textes flottants : montent et s'estompent avec le temps
@@ -1988,6 +2045,24 @@
             startAI();
         }
 
+        // Ce qui arrive à la partie si CET onglet se déconnecte :
+        // - seul humain présent → supprimer toute la partie (personne d'autre
+        //   ne la nettoiera) ;
+        // - sinon → retirer seulement son joueur, l'autre garde la partie et
+        //   voit « l'adversaire a quitté ».
+        // cancel() annule tous les onDisconnect de la partie ET de ses enfants,
+        // d'où la reprogrammation complète à chaque changement.
+        function applyDisconnectPolicy(gameRef, playerId, alone) {
+            if (alone === disconnectAlone) return;
+            disconnectAlone = alone;
+            gameRef.onDisconnect().cancel();
+            if (alone) {
+                gameRef.onDisconnect().remove();
+            } else {
+                gameRef.child(`players/${playerId}`).onDisconnect().remove();
+            }
+        }
+
         // Rejoindre une partie et configurer les écouteurs
         function joinGame(roomId, playerId) {
             log(`Rejoindre la partie ${roomId} en tant que ${playerId}`);
@@ -2025,6 +2100,11 @@
                     newPlayers[id] = Object.assign(local, remote, movement);
                 }
                 gameState.players = newPlayers;
+
+                // Suis-je le seul humain encore présent ? (solo = toujours seul)
+                const humans = Object.keys(newPlayers).filter(id => id !== aiPlayerId);
+                lastKnownAlone = aiMode || humans.length <= 1;
+                applyDisconnectPolicy(gameRef, playerId, lastKnownAlone);
 
                 // Convertir les objets en tableaux en conservant la clé Firebase
                 // comme id : Object.values() seul la perdait, ce qui rendait
@@ -2066,14 +2146,25 @@
                 }
             });
             
-            // Configurer les déconnexions
-            gameRef.child(`players/${playerId}`).onDisconnect().remove();
-            database.ref(`.info/connected`).on('value', (snapshot) => {
+            // Configurer les déconnexions. Avant, CHAQUE joueur programmait la
+            // suppression de toute la partie à sa déconnexion : il suffisait
+            // qu'un seul parte pour que l'autre se retrouve sur une partie
+            // effacée. Maintenant : on retire seulement son propre joueur, et
+            // la partie entière n'est supprimée que par le DERNIER présent
+            // (voir applyDisconnectPolicy, réévaluée à chaque arrivée/départ).
+            if (connectedListener) {
+                database.ref('.info/connected').off('value', connectedListener);
+            }
+            disconnectAlone = null;
+            lastKnownAlone = true;
+            connectedListener = (snapshot) => {
                 if (snapshot.val() === false) return;
-                
-                // Nettoyer la partie si tous les joueurs sont déconnectés
-                gameRef.onDisconnect().remove();
-            });
+                // Les onDisconnect sont consommés côté serveur à chaque
+                // déconnexion : il faut les reprogrammer à chaque reconnexion.
+                disconnectAlone = null;
+                applyDisconnectPolicy(gameRef, playerId, lastKnownAlone);
+            };
+            database.ref('.info/connected').on('value', connectedListener);
             
             // Cacher les contrôles de salle et cacher les contrôles de jeu jusqu'à la fin
             document.getElementById('roomControls').style.display = 'none';
