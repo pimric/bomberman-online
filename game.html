@@ -235,6 +235,7 @@
         // Configuration des bombes
         const BOMB_TIMER = 3000; // Délai avant explosion (ms)
         const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
+        const BOMB_OWNER_GRACE = 500; // Retard toléré avant qu'un autre onglet explose la bombe à la place de son propriétaire (ms)
 
         // Configuration de l'IA
         const AI_MOVE_DELAY = 200; // Délai entre les décisions de l'IA (ms) - aligné sur MOVE_DURATION pour réagir dès qu'un pas se termine
@@ -484,6 +485,17 @@
             return gameState.map[gridY][gridX] === TILE_TYPES.EMPTY;
         }
         
+        // Entités simulées par CET onglet : son joueur, plus l'IA en solo. En
+        // multi, chaque onglet n'a autorité que sur les siennes (mort, bonus,
+        // explosion de ses bombes) : les positions distantes ont du retard, et
+        // si les deux onglets traitaient tout, chaque bombe explosait deux fois
+        // et un joueur pouvait être tué sur une position déjà quittée.
+        function localEntityIds() {
+            const ids = [gameState.playerId];
+            if (aiMode) ids.push(aiPlayerId);
+            return ids;
+        }
+
         // Vérifier si une case contient une bombe
         function hasBomb(gridX, gridY) {
             return gameState.bombs.some(bomb => bomb.x === gridX && bomb.y === gridY);
@@ -1422,8 +1434,10 @@
         }
 
         // Vérifier si des joueurs sont touchés par l'explosion
+        // Seulement les entités locales : un joueur distant est tué par son
+        // propre onglet (checkPlayersInFlames), qui connaît sa vraie position.
         function checkPlayersInExplosion(explosionCells, bomb) {
-            for (const playerId in gameState.players) {
+            for (const playerId of localEntityIds()) {
                 const player = gameState.players[playerId];
                 if (!player || !player.alive) continue;
                 
@@ -1463,10 +1477,7 @@
         function checkPlayersInFlames() {
             if (gameState.explosions.length === 0) return;
 
-            const localIds = [gameState.playerId];
-            if (aiMode) localIds.push(aiPlayerId);
-
-            for (const id of localIds) {
+            for (const id of localEntityIds()) {
                 const player = gameState.players[id];
                 if (!player || !player.alive) continue;
 
@@ -1533,7 +1544,17 @@
             // On retire la bombe de l'état LOCAL immédiatement : sinon elle reste
             // présente jusqu'au prochain aller-retour Firebase (50-150 ms) et
             // explodeBomb() est rappelée à chaque frame sur la même bombe.
-            const bombsToExplode = gameState.bombs.filter(bomb => bomb.timer && bomb.timer <= currentTime);
+            // Seul l'onglet du propriétaire fait exploser sa bombe (sinon double
+            // explosion, double tirage de bonus). Filet de sécurité : si le
+            // propriétaire ne l'a pas fait après BOMB_OWNER_GRACE (onglet en
+            // arrière-plan, déconnecté…), n'importe quel onglet s'en charge.
+            const ownIds = localEntityIds();
+            const bombsToExplode = gameState.bombs.filter(bomb =>
+                bomb.timer && (
+                    (ownIds.includes(bomb.playerId) && bomb.timer <= currentTime) ||
+                    bomb.timer + BOMB_OWNER_GRACE <= currentTime
+                )
+            );
             if (bombsToExplode.length > 0) {
                 gameState.bombs = gameState.bombs.filter(bomb => !bombsToExplode.includes(bomb));
                 for (const bomb of bombsToExplode) {
@@ -1759,8 +1780,8 @@
 
         // Vérifier les bonus collectés
         function checkBonusCollection() {
-            // Pour chaque joueur
-            for (const playerId in gameState.players) {
+            // Seulement les entités locales (l'autre onglet ramasse pour son joueur)
+            for (const playerId of localEntityIds()) {
                 const player = gameState.players[playerId];
                 if (!player || !player.alive) continue;
                 
@@ -1995,9 +2016,7 @@
                 // existant au lieu de le remplacer : moveAI() tient une référence
                 // sur cet objet, et le set() de sa bombe déclenche ce listener
                 // en synchrone — un nouvel objet faisait perdre son pas de fuite.
-                const localIds = [gameState.playerId];
-                if (aiMode) localIds.push(aiPlayerId);
-                for (const id of localIds) {
+                for (const id of localEntityIds()) {
                     const local = gameState.players[id];
                     const remote = newPlayers[id];
                     if (!local || !remote) continue;
