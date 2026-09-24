@@ -58,11 +58,6 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 - Code et commentaires en français.
 
 ## État et prochaine étape
-Lot 4 validé en jeu et en ligne. Ensuite : animation fluide, menu épuré, réglages de partie (69/69).
-Personnages à tête d'animal intégrés (71/71). Cartes à thème + mécaniques intégrées (92/92). Maillot au choix, mode équipes, menu à plat (réglages visibles, boutons en bas), rivières du lagon (98/98) : pas encore validés en jeu. Autres jeux : après Bomberman complet.
+Tout le périmètre Bomberman est fait : 4 joueurs (IA, équipes), personnages et maillots, 7 cartes à mécaniques, réglages, tactile, pause, pseudos, reconnexion, relais d'hôte, salle d'attente. `npm test` validé sur la vraie base : 132/132 sur le PC Windows de l'utilisateur (Node portable dans Downloads) et sur GitHub Actions. Reste : validation en jeu à la main (reconnexion entre vrais appareils, équilibrage des cartes). Autres jeux : après Bomberman complet.
 
-Lots 1 (sons, animations, niveaux IA), 2 (nouveaux bonus/malus), 3 (manches, score, marée) et 4 (jusqu'à 4 joueurs : solo contre 1 à 3 IA, multi avec salle d'attente et IA bouche-trou) faits et testés automatiquement (103/103 en `test:local`), pas encore validés en jeu à la main ni avec `npm test` sur la vraie base : demander un retour de test d'abord.
-
-Limite connue : les IA sont simulées par l'onglet de l'hôte ; si cet onglet passe en arrière-plan, le navigateur ralentit ses timers et les IA avec.
-
-Commandes tactiles faites. Pause, pseudos, tirs amis, reconnexion, relais d'hôte, tic d'arrière-plan, salle d'attente enrichie (132 tests). Domaine : islandbomber.databyric.fr (CNAME sur main, le récupérer avant chaque mise en ligne).
+Domaine : islandbomber.databyric.fr (CNAME sur main, le récupérer avant chaque mise en ligne).
