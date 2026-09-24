@@ -443,6 +443,10 @@
         .lobby-slots .slot-name { flex: 1; min-width: 0; }
         .lobby-slots .btn { white-space: nowrap; }
         .lobby-hint { margin: 0 0 12px; font-weight: 700; color: var(--wood); }
+        .lobby-settings { margin: -4px 0 12px; font-weight: 700; color: var(--wood); font-size: 15px; }
+        .lobby-me { margin: 0 0 12px; }
+        .character-buttons.small button { width: 40px; height: 40px; border-radius: 10px; border-width: 2px; background-size: 36px 36px; }
+        .suit-buttons button:disabled { opacity: .25; cursor: not-allowed; }
         @media (max-width: 500px) { .lobby-slots { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -548,7 +552,12 @@
 
         <section id="lobby" class="card" hidden>
             <h2 class="card-title">Salle <span id="lobbyCode"></span></h2>
+            <p id="lobbySettings" class="lobby-settings"></p>
             <ul id="lobbySlots" class="lobby-slots"></ul>
+            <div id="lobbyMe" class="lobby-me">
+                <div id="lobbyCharacters" class="character-buttons small" role="radiogroup" aria-label="Changer de personnage"></div>
+                <div id="lobbySuits" class="suit-buttons" role="radiogroup" aria-label="Changer de maillot"></div>
+            </div>
             <p id="lobbyHint" class="lobby-hint"></p>
             <button id="launchBtn" class="btn btn-primary btn-big solo-btn" type="button" style="display: none;">Lancer la partie</button>
         </section>
@@ -2341,16 +2350,54 @@
 
             // Une seule boucle pour toutes les IA de la partie (niveau de
             // l'hôte), qui ne tourne que dans l'onglet de l'hôte
-            aiMoveInterval = setInterval(() => {
-                if (!isHost() || !gameState.gameStarted || countdownActive() || isPaused()) return;
-                if (gameState.match && gameState.match.roundOver) return;
-
-                for (const id of aiIds()) {
-                    const aiPlayer = gameState.players[id];
-                    if (aiPlayer.alive) moveAI(id, aiPlayer);
-                }
-            }, aiSettings().moveDelay);
+            aiMoveInterval = setInterval(aiTick, aiSettings().moveDelay);
         }
+
+        let lastAiTick = 0;
+        function aiTick() {
+            lastAiTick = Date.now();
+            if (!isHost() || !gameState.gameStarted || countdownActive() || isPaused()) return;
+            if (gameState.match && gameState.match.roundOver) return;
+            for (const id of aiIds()) {
+                const aiPlayer = gameState.players[id];
+                if (aiPlayer.alive) moveAI(id, aiPlayer);
+            }
+        }
+
+        // Onglet en arrière-plan (partie en ligne) : le navigateur coupe
+        // requestAnimationFrame et ralentit fortement les minuteries. Un
+        // petit Worker (non ralenti) envoie alors un tic toutes les 50 ms qui
+        // fait tourner la simulation, les IA (si hôte) et la présence : les
+        // autres joueurs ne voient pas la partie se figer.
+        let bgWorker = null;
+        let lastBgPresence = 0;
+        function startBackgroundTicker() {
+            if (bgWorker) return;
+            try {
+                const src = 'setInterval(function () { postMessage(0); }, 50);';
+                bgWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+                bgWorker.onmessage = () => {
+                    if (!document.hidden || soloMode || !gameState.roomId) return;
+                    const now = Date.now();
+                    update();
+                    if (now - lastAiTick >= aiSettings().moveDelay) aiTick();
+                    if (now - lastBgPresence >= 1000) {
+                        lastBgPresence = now;
+                        presenceTick();
+                    }
+                };
+            } catch (e) {
+                bgWorker = null; // file:// ou Worker indisponible : tant pis
+            }
+        }
+        function stopBackgroundTicker() {
+            if (bgWorker) bgWorker.terminate();
+            bgWorker = null;
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && !soloMode && gameState.roomId) startBackgroundTicker();
+            else stopBackgroundTicker();
+        });
 
         function stopAI() {
             if (aiMoveInterval) clearInterval(aiMoveInterval);
@@ -3924,11 +3971,13 @@
                     current === null
                         ? spawnPlayer(slot, false, null, suitForSlot(slot, gameData.match, gameData.players, myColor))
                         : undefined
-                ).then(({ committed }) => {
+                ).then(({ committed, snapshot }) => {
                     if (!committed) {
                         alert('Cette place vient d\'être prise, réessaie');
                         return;
                     }
+                    // sa propre fiche tout de suite (couleur, pseudo) pour le message
+                    gameState.players = { ...(gameData.players || {}), [slot]: snapshot.val() };
                     gameState.roomId = roomId;
                     gameState.playerId = slot;
                     soloMode = false;
@@ -3993,15 +4042,19 @@
                 const team = teamMode() ? ` <small>${teamName(TEAM_OF[id])}</small>` : '';
                 const label = (!p ? 'Place libre' : escapeHtml(nameOf(id)) + (id === gameState.playerId ? ' (vous)' : '')) + team;
                 let action = '';
-                if (host && id !== 'player1') {
+                if (host && id !== gameState.playerId) {
                     if (!p) action = `<button type="button" class="btn btn-small" data-add-ai="${id}">Ajouter une IA</button>`;
                     else if (p.ai) action = `<button type="button" class="btn btn-small btn-ghost" data-remove-ai="${id}">Retirer</button>`;
+                } else if (!host && !p && teamMode()) {
+                    // équipes : un invité peut changer de place (donc d'équipe)
+                    action = `<button type="button" class="btn btn-small" data-move="${id}">Prendre cette place</button>`;
                 }
                 const accent = p ? suit.css : (teamMode() ? SUIT_COLORS[gameState.match.teamColors[TEAM_OF[id]]].css : 'var(--sand-deep)');
                 return `<li class="${p ? '' : 'free'}" style="--accent:${accent}">
                     <span class="portrait sprite" style="${p ? portraitCss(lookOf(id), 40) : ''}"></span>
                     <span class="slot-name">${label}</span>${action}</li>`;
             }).join('');
+            renderLobbyExtras(gameData);
             const count = PLAYER_IDS.filter(id => players[id]).length;
             const launchBtn = document.getElementById('launchBtn');
             // style et non l'attribut hidden : .btn impose son display
@@ -4012,6 +4065,65 @@
                 : count < needed ? (teamMode() ? 'Équipes 2 contre 2 : il faut 4 joueurs (complète avec des IA)'
                                                : 'Donne le code à tes amis ou ajoute une IA')
                 : `${count} joueurs prêts` + (teamMode() ? ' · haut contre bas' : '');
+        }
+
+        // Salle d'attente : réglages de l'hôte (visibles par tous) et, pour
+        // soi, changement de personnage et de maillot
+        function renderLobbyExtras(gameData) {
+            const m = gameData.match || {};
+            const rate = Object.keys(BONUS_RATES).find(k => BONUS_RATES[k] === m.bonusRate) || 'normal';
+            const map = m.mapChoice === 'aleatoire' ? 'aléatoire' : (THEMES[m.mapChoice] || THEMES.plage).label;
+            document.getElementById('lobbySettings').textContent = [
+                m.mode === 'equipes' ? 'Équipes 2 contre 2' + (m.friendlyFire === false ? ' sans tirs amis' : '') : 'Chacun pour soi',
+                'carte ' + map,
+                `${m.roundsToWin || 3} manche${m.roundsToWin > 1 ? 's' : ''} gagnante${m.roundsToWin > 1 ? 's' : ''}`,
+                `marée après ${Math.round((m.roundTime || 90000) / 1000)} s`,
+                'bonus : ' + rate
+            ].join(' · ');
+
+            const players = gameData.players || {};
+            const me = players[gameState.playerId];
+            document.getElementById('lobbyMe').style.display = me ? '' : 'none';
+            if (!me) return;
+            document.getElementById('lobbyCharacters').innerHTML = Object.keys(CHARACTERS).map(c =>
+                `<button type="button" role="radio" data-lobby-character="${c}" aria-checked="${c === me.character}" ` +
+                `title="${CHARACTERS[c]}" aria-label="${CHARACTERS[c]}" ` +
+                `style="${portraitCss({ character: c, suit: SUIT_COLORS[me.suit] ? me.suit : 'rouge' }, 36)}"></button>`).join('');
+            // maillot : libre seulement en chacun pour soi, et pas une couleur déjà prise
+            const suits = document.getElementById('lobbySuits');
+            suits.style.display = m.mode === 'equipes' ? 'none' : '';
+            const taken = PLAYER_IDS.filter(id => id !== gameState.playerId && players[id]).map(id => players[id].suit);
+            suits.innerHTML = SUIT_IDS.map(c =>
+                `<button type="button" role="radio" data-lobby-suit="${c}" aria-checked="${c === me.suit}" ` +
+                `${taken.includes(c) ? 'disabled' : ''} title="Maillot ${SUIT_COLORS[c].word}" ` +
+                `aria-label="Maillot ${SUIT_COLORS[c].word}" style="background:${SUIT_COLORS[c].css}"></button>`).join('');
+        }
+        function lobbyChange(fields) {
+            if (!gameState.roomId || gameState.gameStarted || !gameState.players[gameState.playerId]) return;
+            database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update(fields);
+        }
+        // Équipes : passer sur une place libre (l'autre équipe). On recrée son
+        // joueur sur la nouvelle place (prise atomique), on libère l'ancienne,
+        // puis on rejoue joinGame sous le nouvel identifiant.
+        function moveToSlot(target) {
+            const roomId = gameState.roomId;
+            const from = gameState.playerId;
+            const me = gameState.players[from];
+            if (!roomId || !me || gameState.gameStarted || isHost() || from === target) return;
+            const gameRef = database.ref(`games/${roomId}`);
+            const others = { ...gameState.players };
+            delete others[from];
+            const suit = suitForSlot(target, gameState.match, others, me.suit);
+            gameRef.child(`players/${target}`).transaction(current =>
+                current === null ? spawnPlayer(target, false, me.character, suit, me.name || '') : undefined
+            ).then(({ committed }) => {
+                if (!committed) return;
+                gameRef.off();
+                gameRef.update({ [`players/${from}`]: null, [`match/scores/${from}`]: null, [`match/scores/${target}`]: 0 });
+                gameState.playerId = target;
+                gameState.players = {};
+                joinGame(roomId, target, false);
+            });
         }
 
         // Supprimer l'ancienne partie de Firebase avant d'en créer une nouvelle.
@@ -4469,8 +4581,25 @@
         document.getElementById('lobbySlots').addEventListener('click', e => {
             const add = e.target.closest('[data-add-ai]');
             const remove = e.target.closest('[data-remove-ai]');
+            const move = e.target.closest('[data-move]');
             if (add) addLobbyAi(add.dataset.addAi);
             if (remove) removeLobbyAi(remove.dataset.removeAi);
+            if (move) moveToSlot(move.dataset.move);
+        });
+        document.getElementById('lobbyMe').addEventListener('click', e => {
+            const c = e.target.closest('[data-lobby-character]');
+            const suit = e.target.closest('[data-lobby-suit]');
+            if (c) {
+                myCharacter = c.dataset.lobbyCharacter;
+                try { localStorage.setItem('islandBomber.character', myCharacter); } catch (err) { /* non bloquant */ }
+                lobbyChange({ character: myCharacter });
+            }
+            if (suit && !suit.disabled) {
+                myColor = suit.dataset.lobbySuit;
+                try { localStorage.setItem('islandBomber.suit', myColor); } catch (err) { /* non bloquant */ }
+                lobbyChange({ suit: myColor, color: SUIT_COLORS[myColor].css });
+            }
+            if (c || suit) renderCharacterPicker();
         });
 
         const restartBtn = document.getElementById('restartBtn');

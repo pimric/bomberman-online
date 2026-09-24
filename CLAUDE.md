@@ -7,7 +7,8 @@ Bomberman sur île tropicale, en ligne. Déployé sur GitHub Pages : **chaque pu
 - Firebase Realtime Database (projet `bomberman-10e44`, région **europe-west1**) pour le multijoueur et le solo contre IA. Pas de backend.
 - `assets/ile.css` : style commun (palette, polices Pacifico + Baloo 2, océan CSS).
 - `assets/sprites.png` + `assets/sprites.js` (`window.SPRITE_ATLAS`, en .js pour marcher en `file://`) générés par `tools/build_sprites.py` (Pillow) depuis les planches `assets/src/*.png` (fond magenta #FF00FF, générées avec Gemini).
-- `tests/multijoueur.test.js` : test auto (puppeteer-core + Chrome local, jusqu'à 3 navigateurs headless, salle `mptest_*` sur la vraie base, supprimée à la fin). `cd tests && npm install && npm test`. **Relancer après toute modif de `game.html`.**
+- `tests/multijoueur.test.js` : test auto (puppeteer-core + Chrome/Edge détecté, jusqu'à 3 navigateurs headless, salle `mptest_*` sur la vraie base, supprimée à la fin). `cd tests && npm install && npm test`. **Relancer après toute modif de `game.html`.**
+  - GitHub Actions (`.github/workflows/tests.yml`) lance `npm test` sur la vraie base à chaque push (main, claude/**) : c'est le test « réel » à regarder (outils GitHub : liste des runs, logs du job).
   - Sans accès à Firebase (conteneur cloud : Firebase et cdnjs bloqués par le proxy) : `CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run test:local`. La base est alors simulée en mémoire (`tests/mock/hub.js` côté Node + `tests/mock/firebase-client.js` servi à la place du SDK) : écritures locales immédiates + ordre unique via le hub, tableaux à clés entières, `transaction`, `onDisconnect`. Si le jeu utilise une nouvelle API Firebase, l'ajouter au faux SDK.
 - `.git-auto-push.sh` / `bomberman-watch.sh` : ancien auto-push (commit+push à chaque sauvegarde). Ne pas relancer.
 
@@ -24,7 +25,12 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 - **4 places** `PLAYER_SLOTS` (player1..4 : coin de départ seulement). player1 = l'hôte, toujours humain ; player2 au coin opposé (duel équitable). Une IA est un joueur ordinaire avec `ai: true` (`isAi()`, `aiIds()`), simulée par l'onglet de l'hôte : `localEntityIds()` = joueur local + IA si hôte.
 - Multi : salle d'attente (`renderLobby`) tant que `gameStarted` est faux. Les amis prennent la première place libre (`transaction`, anti-collision), l'hôte ajoute/retire des IA puis `launchGame()` (2 joueurs min). Partie commencée = plus d'arrivée.
 - Départ en cours de match : `presentIds()` (joueurs du match encore présents). Le match continue sans lui (il n'est pas replacé à la manche suivante) sauf si l'hôte part ou s'il reste < 2 joueurs.
-- Déconnexion : `applyDisconnectPolicy()` (seul humain → la partie est supprimée, sinon seulement son joueur).
+- Déconnexion : `applyDisconnectPolicy()` (seul humain présent → la partie est supprimée ; sinon `players/<id>/offline` = heure serveur). Un déconnecté est hors jeu (`presentIds`, `offlineIds`), caché, « déconnecté » sur sa fiche ; en duel la partie attend son retour (`checkGameOver`), à 3+ elle continue ; `startRound` le garde (mort pour la manche). Retiré par l'hôte après `match.offlineGrace` (60 s, `?grace=`), 3 s en salle d'attente (`presenceTick`, 1 s). Reprise après rechargement : `islandBomber.session` (localStorage) → bouton « Reprendre la partie » (`checkSavedSession`, `resumeSavedGame`).
+- Hôte : `match.host` (`hostId()`, `isHost()`), relais au premier humain présent si l'hôte est absent (`presenceTick`, relance `startRound` si la manche était finie). Onglet caché en ligne : Worker qui envoie un tic toutes les 50 ms (`startBackgroundTicker` → `update`, `aiTick`, `presenceTick`).
+- Pause (solo) : `togglePause`, P/Échap, bouton, auto quand l'onglet est caché ; `resumeGame` décale bombes, flammes, marée, malus, tempête, pas en cours.
+- Pseudo facultatif `player.name` (`myName`, localStorage `islandBomber.name`, `cleanName`, `escapeHtml` dans le HTML) ; `nameOf`/`subjectOf`/`youAreText`.
+- Tirs amis (équipes, `match.friendlyFire`) : les explosions portent `owner`, `flameHurts(owner, victime)`.
+- Salle d'attente : `renderLobbyExtras` (réglages de l'hôte, changement de personnage/maillot, couleurs prises grisées), `moveToSlot` (équipes : un invité change de place, rejoue `joinGame`).
 - IA (`moveAI(id, ai)`, `startAI` = une boucle pour toutes les IA, `stopAI`) : état par entité dans `aiBrains` (`lastMove`, `history`). Chasse l'ennemi vivant le plus proche (`nearestEnemy`, humains et autres IA). Décision toutes les `AI_MOVE_DELAY` ms, niveaux `AI_LEVELS` (localStorage `islandBomber.aiLevel`, celui de l'hôte en multi), nombre d'IA en solo `aiCount` (`islandBomber.aiCount`). Fuite par BFS (`getBestEscapeDirection`, `hasEscapeRoute` qui simule la bombe avant de la poser, profondeur `aiEscapeMaxSteps()`). Distinguer « je suis en danger » (case actuelle → fuite) et « je vais vers le danger » (case cible → interdit, filtre `safeDirections`).
 - `update()` continue quand le joueur local est mort (spectateur) : ses bombes et les IA de l'hôte doivent continuer à tourner.
 - Manches/marée : `gameState.match`, l'hôte (player1) fait `finishRound()` / `startRound()`. Marée calculée sur l'heure serveur (`serverNow()`), aucune écriture. URL de test : `?manches=N&maree=secondes`.
@@ -58,4 +64,4 @@ Lots 1 (sons, animations, niveaux IA), 2 (nouveaux bonus/malus), 3 (manches, sco
 
 Limite connue : les IA sont simulées par l'onglet de l'hôte ; si cet onglet passe en arrière-plan, le navigateur ralentit ses timers et les IA avec.
 
-Commandes tactiles faites (103/103), à valider sur un vrai téléphone.
+Commandes tactiles faites. Pause, pseudos, tirs amis, reconnexion, relais d'hôte, tic d'arrière-plan, salle d'attente enrichie (132 tests). Domaine : islandbomber.databyric.fr (CNAME sur main, le récupérer avant chaque mise en ligne).

@@ -260,6 +260,8 @@ const gridOf = (page, id) => page.evaluate(id => {
 
     await scenarioDeconnexion();
     await scenarioReconnexion();
+    await scenarioArrierePlan();
+    await scenarioSalleAttente();
     await scenarioQuatreJoueurs();
     await scenarioSolo();
     await scenarioSoloTroisIA();
@@ -1057,5 +1059,91 @@ async function scenarioReconnexion() {
         for (const P of [A, B, C]) check(`Aucune erreur JS chez ${P.label}`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
         await B.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
         for (const P of [A, B, C]) await P.browser.close().catch(() => {});
+    }
+}
+
+// Onglet de l'hôte en arrière-plan : plus de requestAnimationFrame ni de
+// minuterie d'IA ; le tic du Worker doit faire bouger l'IA (vu par B).
+async function scenarioArrierePlan() {
+    const room = ROOM + '_bg';
+    const A = await openPlayer('A6(hôte caché)', '?maree=600');
+    const B = await openPlayer('B6');
+    try {
+        await A.page.type('#roomInput', room);
+        await A.page.click('#createBtn');
+        await A.page.waitForSelector('[data-add-ai="player2"]', { timeout: 10000 });
+        await A.page.click('[data-add-ai="player2"]');
+        await A.page.waitForFunction(() => gameState.players.player2, { timeout: 10000 });
+        await B.page.type('#roomInput', room);
+        await B.page.click('#joinBtn');
+        await A.page.waitForFunction(() => gameState.players.player3 && !document.getElementById('launchBtn').disabled, { timeout: 10000 });
+        await A.page.click('#launchBtn');
+        await Promise.all([A, B].map(P => P.page.waitForFunction(() => gameState.gameStarted && !countdownActive(), { timeout: 12000 })));
+        await A.page.evaluate(() => {
+            window.requestAnimationFrame = () => 0;   // plus d'images
+            stopAI();                                 // plus de minuterie d'IA
+            Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+            document.dispatchEvent(new Event('visibilitychange'));
+        });
+        const seen = new Set();
+        for (let i = 0; i < 25; i++) {
+            const g = await gridOf(B.page, 'player2');
+            seen.add(`${g.x},${g.y}`);
+            await sleep(200);
+        }
+        check('Arrière-plan : l’IA de l’hôte caché continue de jouer', seen.size >= 2, [...seen].join(' '));
+    } catch (e) {
+        check('Déroulement du scénario arrière-plan', false, e.message);
+    } finally {
+        for (const P of [A, B]) check(`Aucune erreur JS chez ${P.label}`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        await B.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        for (const P of [A, B]) await P.browser.close().catch(() => {});
+    }
+}
+
+// Salle d'attente : réglages de l'hôte visibles, personnage et maillot
+// modifiables ; en équipes, un invité peut changer de place (d'équipe).
+async function scenarioSalleAttente() {
+    for (const mode of ['libre', 'equipes']) {
+        const room = ROOM + '_salle_' + mode;
+        const A = await openPlayer(`A7(${mode})`, mode === 'equipes' ? '?mode=equipes' : '');
+        const B = await openPlayer(`B7(${mode})`);
+        try {
+            await A.page.type('#roomInput', room);
+            await A.page.click('#createBtn');
+            await A.page.waitForFunction(() => gameState.players.player1, { timeout: 10000 });
+            await B.page.type('#roomInput', room);
+            await B.page.click('#joinBtn');
+            await B.page.waitForFunction(() => gameState.playerId === 'player2' &&
+                document.getElementById('lobbySettings').textContent !== '', { timeout: 10000 });
+            const settings = await B.page.$eval('#lobbySettings', e => e.textContent);
+            if (mode === 'libre') {
+                check('Salle d’attente : l’invité voit les réglages de l’hôte', settings.includes('Chacun pour soi') && settings.includes('carte'), settings);
+                const joinedMsg = await B.page.$eval('#gameInfo', e => e.textContent);
+                check('Salle d’attente : message d’arrivée avec la bonne couleur', joinedMsg.includes('joueur bleu'), joinedMsg);
+                await B.page.click('[data-lobby-character="dauphin"]');
+                await B.page.click('[data-lobby-suit="rose"]');
+                await A.page.waitForFunction(() => gameState.players.player2.character === 'dauphin' && gameState.players.player2.suit === 'rose', { timeout: 8000 })
+                    .then(() => check('Salle d’attente : personnage et maillot changés (vus par l’hôte)', true))
+                    .catch(() => check('Salle d’attente : personnage et maillot changés (vus par l’hôte)', false));
+                const redLocked = await B.page.$eval('[data-lobby-suit="rouge"]', b => b.disabled);
+                check('Salle d’attente : la couleur de l’hôte est grisée', redLocked);
+            } else {
+                check('Salle d’attente : mode équipes affiché', settings.includes('Équipes'), settings);
+                await B.page.waitForSelector('[data-move="player3"]', { timeout: 5000 });
+                await B.page.click('[data-move="player3"]');
+                await A.page.waitForFunction(() => gameState.players.player3 && !gameState.players.player3.ai && !gameState.players.player2, { timeout: 8000 });
+                const moved = await B.page.evaluate(() => ({ id: gameState.playerId, suit: gameState.players.player3 && gameState.players.player3.suit,
+                    team: gameState.match.teamColors.A }));
+                check('Équipes : l’invité change d’équipe (place 3, couleur de l’équipe du haut)',
+                    moved.id === 'player3' && moved.suit === moved.team, JSON.stringify(moved));
+            }
+        } catch (e) {
+            check(`Déroulement du scénario salle d’attente (${mode})`, false, e.message);
+        } finally {
+            for (const P of [A, B]) check(`Aucune erreur JS chez ${P.label}`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+            await A.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+            for (const P of [A, B]) await P.browser.close().catch(() => {});
+        }
     }
 }
