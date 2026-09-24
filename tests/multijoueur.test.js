@@ -247,6 +247,7 @@ const gridOf = (page, id) => page.evaluate(id => {
     await scenarioSolo();
     await scenarioSoloTroisIA();
     await scenarioReglages();
+    await scenarioCartes();
     await scenarioMaree();
     await scenarioPouvoirs();
 
@@ -675,4 +676,126 @@ async function scenarioReglages() {
         if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
         await P.browser.close();
     }
+}
+
+// Cartes à thème : une partie solo par carte (?carte=…), IA figée, et la
+// mécanique déclenchée pour de vrai.
+async function scenarioCartes() {
+    async function withMap(theme, fn) {
+        const P = await openPlayer('Carte ' + theme, `?carte=${theme}&maree=600`);
+        let room = null;
+        try {
+            await P.page.click('#singlePlayerBtn');
+            await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
+            room = await P.page.evaluate(() => gameState.roomId);
+            await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+            // IA figée et écartée, ligne 1 dégagée (sans palmier ni élément)
+            await P.page.evaluate(() => {
+                stopAI();
+                const row = {};
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    row[x] = TILE_TYPES.EMPTY;
+                    gameState.map[1][x] = TILE_TYPES.EMPTY;
+                    delete gameState.features[featKey(x, 1)];
+                    database.ref(`games/${gameState.roomId}/features/${featKey(x, 1)}`).remove();
+                }
+                return database.ref(`games/${gameState.roomId}/map/1`).set(row);
+            });
+            const theme2 = await P.page.evaluate(() => currentTheme());
+            check(`Carte ${theme} : thème de la manche`, theme2 === theme, theme2);
+            await fn(P);
+        } catch (e) {
+            check(`Déroulement de la carte ${theme}`, false, e.message);
+        } finally {
+            check(`Aucune erreur JS (carte ${theme})`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+            if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+            await P.browser.close();
+        }
+    }
+    const teleport = (P, x, y) => P.page.evaluate(({ x, y }) => {
+        const me = gameState.players.player1;
+        const px = x * TILE_SIZE + TILE_SIZE / 2, py = y * TILE_SIZE + TILE_SIZE / 2;
+        Object.assign(me, { x: px, y: py, fromX: px, fromY: py, toX: px, toY: py, moving: false });
+    }, { x, y });
+    const setFeature = (P, x, y, f) => P.page.evaluate(({ x, y, f }) => {
+        gameState.features[featKey(x, y)] = f;
+        return database.ref(`games/${gameState.roomId}/features/${featKey(x, y)}`).set(f);
+    }, { x, y, f });
+
+    await withMap('ponton', async P => {
+        await setFeature(P, 6, 1, { t: 'crack', s: 1 });
+        await teleport(P, 6, 1);
+        await P.page.keyboard.press(' ');
+        await teleport(P, 6, 13);
+        await P.page.waitForFunction(() => isHole(6, 1), { timeout: 5000 }).catch(() => {});
+        const hole = await P.page.evaluate(() => ({ hole: isHole(6, 1), acc: isGridAccessible(6, 1) }));
+        check('Ponton : la planche fragile casse en trou infranchissable', hole.hole && !hole.acc, JSON.stringify(hole));
+        await P.page.waitForFunction(() => gameState.explosions.length === 0, { timeout: 3000 });
+        await teleport(P, 6, 1);
+        await sleep(300);
+        const dead = await P.page.evaluate(() => gameState.players.player1.alive === false);
+        check('Ponton : tomber dans un trou tue', dead && P.logs.some(l => l.includes('trou')), P.logs.slice(-1).join(''));
+    });
+
+    await withMap('volcan', async P => {
+        await setFeature(P, 6, 1, { t: 'crack', s: 1 });
+        await teleport(P, 6, 1);
+        await P.page.keyboard.press(' ');
+        await teleport(P, 6, 13);
+        await P.page.waitForFunction(() => gameState.explosions.length > 0, { timeout: 5000 });
+        await sleep(200);
+        const f = await P.page.evaluate(() => featureAt(6, 1));
+        check('Volcan : une explosion fissure plus, sans trou', f && f.s === 2 && !f.h, JSON.stringify(f));
+    });
+
+    await withMap('lagon', async P => {
+        await setFeature(P, 5, 1, { t: 'current', d: 'r' });
+        await teleport(P, 5, 1);
+        await sleep(900);
+        const g = await gridOf(P.page, 'player1');
+        check('Lagon : le courant entraîne le joueur arrêté', g.x === 6 && g.y === 1, `position=(${g.x},${g.y})`);
+    });
+
+    await withMap('jungle', async P => {
+        await setFeature(P, 5, 1, { t: 'burrow', to: '11_1' });
+        await setFeature(P, 11, 1, { t: 'burrow', to: '5_1' });
+        await teleport(P, 4, 1);
+        await P.page.keyboard.down('ArrowRight');
+        await sleep(120);
+        await P.page.keyboard.up('ArrowRight');
+        await sleep(600);
+        const g = await gridOf(P.page, 'player1');
+        check('Jungle : le terrier téléporte à l’autre bout', g.x === 11 && g.y === 1, `position=(${g.x},${g.y})`);
+        await sleep(500);
+        const g2 = await gridOf(P.page, 'player1');
+        check('Jungle : pas de va-et-vient entre terriers', g2.x === 11, `position=(${g2.x},${g2.y})`);
+    });
+
+    await withMap('tempete', async P => {
+        await P.page.evaluate(() => startAI()); // la boucle IA ne gêne pas : la tempête dépend de l'hôte
+        await P.page.evaluate(() => stopAI());
+        await P.page.waitForFunction(() => gameState.storm.length > 0, { timeout: 6000 })
+            .then(() => check('Tempête : l’hôte fait tomber des noix de coco', true))
+            .catch(() => check('Tempête : l’hôte fait tomber des noix de coco', false));
+        await teleport(P, 7, 1);
+        await P.page.evaluate(() => {
+            const ref = database.ref(`games/${gameState.roomId}/storm`).push();
+            return ref.set({ id: ref.key, x: 7, y: 1, at: serverNow() + 300 });
+        });
+        await sleep(900);
+        const dead = await P.page.evaluate(() => gameState.players.player1.alive === false);
+        check('Tempête : une noix de coco sur la tête tue', dead && P.logs.some(l => l.includes('noix de coco')), P.logs.slice(-1).join(''));
+    });
+
+    await withMap('grotte', async P => {
+        await sleep(400);
+        const dark = await P.page.evaluate(() => {
+            if (!darkCanvas) return null;
+            // coin opposé (loin du joueur et, a priori, des lumières) : sombre
+            const d = darkCanvas.getContext('2d').getImageData(GRID_SIZE * TILE_SIZE - 20, GRID_SIZE * TILE_SIZE - 60, 1, 1).data;
+            const me = darkCanvas.getContext('2d').getImageData(16, 16, 1, 1).data;
+            return { far: d[3], me: me[3] };
+        });
+        check('Grotte : noir au loin, clair autour du joueur', dark && dark.far > 150 && dark.me < 60, JSON.stringify(dark));
+    });
 }

@@ -207,6 +207,46 @@ def walk_cycle(path):
     return walk
 
 
+# ------------------------------------------------------------ cartes
+# Planches carte_<thème>.jpg (prompts : assets/src/PROMPTS_CARTES.md) :
+# 2 lignes de 4. Ligne 1 : sol, sol2, mur (fixe), casse (cassable).
+# Ligne 2 : bord (liseré à droite), m1, m2, m3 (éléments de la mécanique).
+# 'T' = tuile pleine (rognée puis étirée au carré), 'O' = objet (proportions
+# gardées).
+MAP_SLOTS = ['sol', 'sol2', 'mur', 'casse', 'bord', 'm1', 'm2', 'm3']
+MAP_KINDS = {
+    'lagon':   'TTTTTTTT',
+    'ponton':  'TTOOTTTT',
+    'tempete': 'TTTOTOTO',
+    'grotte':  'TTTOTTTT',
+    'jungle':  'TTOOTTOT',
+    'volcan':  'TTOOTTTT',
+}
+
+
+def tile(img):
+    """Tuile de sol : rogner le liseré clair des bords puis étirer pile au
+    carré (sinon le plateau montre un quadrillage)."""
+    w, h = img.size
+    m = round(min(w, h) * 0.05)
+    return img.crop((m, m, w - m, h - m)).resize((SPRITE, SPRITE), Image.LANCZOS)
+
+
+def map_sheet(theme):
+    im = Image.open(os.path.join(SRC, f'carte_{theme}.jpg')).convert('RGB')
+    boxes = components(im)
+    assert len(boxes) == 8, f'carte_{theme} : {len(boxes)} éléments au lieu de 8'
+    # ligne = moitié de l'image où tombe le centre (un objet plus petit
+    # qu'une tuile commence plus bas mais reste dans sa ligne)
+    half = im.size[1] / 2
+    boxes.sort(key=lambda b: ((b[1] + b[3]) / 2 > half, b[0]))
+    out = {}
+    for name, kind, box in zip(MAP_SLOTS, MAP_KINDS[theme], boxes):
+        img = cutout(im, box)
+        out[f'{theme}_{name}'] = tile(img) if kind == 'T' else fit(img)
+    return out
+
+
 # ------------------------------------------------------------ assemblage
 def main():
     sprites = {}
@@ -249,6 +289,9 @@ def main():
     sprites['bonus_pierce'] = fit(o2[2])
     sprites['bomb_remote'] = fit(o2[3])
     sprites['bonus_malus'] = fit(o2[6])
+
+    for theme in MAP_KINDS:
+        sprites.update(map_sheet(theme))
 
     # Baigneuse (planche d'origine, maillot rouge) : une variante par couleur
     walk = walk_cycle(os.path.join(SRC, 'personnage.png'))
