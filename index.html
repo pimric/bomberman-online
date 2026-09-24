@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Island Bomber</title>
-    <meta name="description" content="Island Bomber : un Bomberman sur une île tropicale, en solo contre l'IA ou entre amis.">
+    <meta name="description" content="Island Bomber : un Bomberman sur une île tropicale, en solo contre l'IA, entre amis ou en équipes.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Pacifico&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/ile.css">
@@ -77,13 +77,23 @@
         .bonuses strong { display: block; line-height: 1.1; }
         .bonuses span.desc { font-size: 15px; color: #6b4a2a; }
 
-        .keys p { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .keys p { line-height: 1.9; }
+
+        /* Textes des cartes justifiés (césure pour éviter les grands blancs) */
+        .grid .card p, .modes li, .bonuses span.desc {
+            text-align: justify;
+            hyphens: auto;
+            -webkit-hyphens: auto;
+        }
+        .keys p:not(.rule) { text-align: left; }
+        .keys p.rule { line-height: 1.45; }
 
         footer {
             color: var(--foam);
             font-size: 14px;
             opacity: .85;
         }
+        footer a { color: inherit; font-weight: 800; }
 
         @media (max-width: 640px) {
             .grid, .bonuses { grid-template-columns: 1fr; }
@@ -103,10 +113,12 @@
 
         <div class="grid">
             <section class="card">
-                <h2 class="card-title">Deux façons de jouer</h2>
+                <h2 class="card-title">Comment jouer</h2>
                 <ul class="modes">
                     <li><strong>Solo</strong> contre 1 à 3 IA : elles posent des bombes, fuient les explosions, ramassent les bonus… et se battent aussi entre elles.</li>
                     <li><strong>Entre amis</strong>, jusqu'à 4 : crée une partie, partage son code, tes amis la rejoignent depuis leur navigateur. Places libres ? Complète avec des IA.</li>
+                    <li><strong>En équipes</strong>, 2 contre 2 : une couleur de maillot par équipe, la dernière équipe debout gagne la manche.</li>
+                    <li><strong>Sept îles</strong> : plage, lagon et ses courants, volcan qui s'effondre, jungle et ses terriers, ponton fragile, grotte obscure, tempête de noix de coco.</li>
                 </ul>
             </section>
 
@@ -115,7 +127,8 @@
                 <p><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> se déplacer case par case</p>
                 <p><kbd>Espace</kbd> poser une bombe</p>
                 <p><kbd>Entrée</kbd> déclencher ses bombes (avec le détonateur)</p>
-                <p>Le dernier debout gagne la manche, le premier à 3 manches gagne le match. Au bout de 90 s, la marée monte : ne traîne pas au bord !</p>
+                <p class="rule">Sur téléphone : une croix pour se déplacer, un gros bouton pour poser les bombes.</p>
+                <p class="rule">Le dernier debout gagne la manche, le premier à 3 manches gagne le match (réglable). Au bout d'un moment, la marée monte : ne traîne pas au bord !</p>
             </section>
 
             <section class="card" style="grid-column: 1 / -1">
@@ -132,7 +145,7 @@
             </section>
         </div>
 
-        <footer>Développé par pimric</footer>
+        <footer>Développé par <a href="https://databyric.fr" target="_blank" rel="noopener">databyric</a></footer>
     </main>
 
     <script src="assets/sprites.js"></script>
