@@ -31,7 +31,7 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 - Bonus : BONUS_TYPES (bombe, puissance, vitesse, coup de pied, détonateur, flamme perçante, noix de coco pourrie = malus). Effets : `sfx()` WebAudio, `detectEvents()`, `fx.particles` / `fx.deaths`, textes flottants locaux.
 - Réglages de partie (menu, `gameSettings`, localStorage `islandBomber.settings`) : manches, marée, quantité (`BONUS_RATES`) et types de bonus. Recopiés dans le match à la création (`bonusRate`, `bonusTypes` en chaîne « 0,1,3 » car un tableau vide disparaît de Firebase) : le créateur décide pour tous ; `allowedBonusTypes()` / `bonusRate()` les lisent. Menu sans partie = `body.in-menu` (île masquée).
 - Animation de marche : l'image suit la distance parcourue (`WALK_CYCLE_TILES`), pas l'horloge. Sprites personnage : échelle commune et tête centrée (`fit_character`).
-- Skins : `skinOf()` → red/blue/green/yellow, IA = `ai_<couleur>` (maillot anthracite + bandana de sa couleur), règles `skins` de `build_sprites.py`.
+- Personnages : `player.character` (`CHARACTERS` : 6 animaux + baigneuse), choisi dans le menu (localStorage `islandBomber.character`), IA = animal au hasard (`pickAiCharacter`, distincts si possible) + étiquette « IA » au-dessus de la tête. Couleur = celle de la place. Atlas : baigneuse en 4 couleurs (`red/blue/green/yellow_<dir>_<i>`), animaux en maillot BLEU seulement (`<animal>_<dir>_<i>`), recolorés à la volée (`tintedFrame`, cache canvas ; en `file://` canvas contaminé → reste bleu). Dessin via `drawCharacter(lookOf(id), …)`, portraits via `portraitCss`. Planches `assets/src/perso_<animal>.jpg` (prompts : `assets/src/PROMPTS_PERSONNAGES.md`), maillot bleu vif pour ne pas recolorer les têtes rouges/roses.
 - Repères debug : `aiBrains[id].history` (15 dernières décisions par IA, `logAiHistory()` à chaque mort), logs `MORT de …` et `IA fuite: aucune case sure…` (compteurs bombes/explosions).
 
 ## Leçons (pièges déjà payés)
@@ -49,9 +49,9 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 
 ## État et prochaine étape
 Lot 4 validé en jeu et en ligne. Ensuite : animation fluide, menu épuré, réglages de partie (69/69).
-Idées en attente : cartes à thèmes/mécaniques, personnages femme à tête d'animal (sprites à générer), autres jeux (après Bomberman complet).
+Personnages à tête d'animal intégrés (71/71). Cartes à thèmes/mécaniques : prompts dans `assets/src/PROMPTS_CARTES.md`, planches `carte_<nom>.png` attendues de l'utilisateur. Autres jeux : après Bomberman complet.
 
-Lots 1 (sons, animations, niveaux IA), 2 (nouveaux bonus/malus), 3 (manches, score, marée) et 4 (jusqu'à 4 joueurs : solo contre 1 à 3 IA, multi avec salle d'attente et IA bouche-trou) faits et testés automatiquement (69/69 en `test:local`), pas encore validés en jeu à la main ni avec `npm test` sur la vraie base : demander un retour de test d'abord.
+Lots 1 (sons, animations, niveaux IA), 2 (nouveaux bonus/malus), 3 (manches, score, marée) et 4 (jusqu'à 4 joueurs : solo contre 1 à 3 IA, multi avec salle d'attente et IA bouche-trou) faits et testés automatiquement (71/71 en `test:local`), pas encore validés en jeu à la main ni avec `npm test` sur la vraie base : demander un retour de test d'abord.
 
 Limite connue : les IA sont simulées par l'onglet de l'hôte ; si cet onglet passe en arrière-plan, le navigateur ralentit ses timers et les IA avec.
 

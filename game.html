@@ -223,6 +223,21 @@
             .keys-hint { display: none; }
         }
 
+        /* Choix du personnage (menu) */
+        .character-picker { margin-bottom: 14px; }
+        .character-name { display: block; font-weight: 800; color: var(--wood); margin-bottom: 6px; }
+        .character-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+        .character-buttons button {
+            width: 56px;
+            height: 56px;
+            padding: 0;
+            border-radius: 14px;
+            border: 3px solid var(--sand-deep);
+            background: #fff center / 52px 52px no-repeat;
+            cursor: pointer;
+        }
+        .character-buttons button[aria-checked="true"] { border-color: var(--wood); background-color: var(--sand); transform: scale(1.08); }
+
         /* Réglages de la partie (menu) */
         .settings { margin-top: 14px; text-align: center; }
         .settings summary {
@@ -319,6 +334,10 @@
 
         <section id="roomControls" class="card">
             <h2 class="card-title">Choisis ta partie</h2>
+            <div class="character-picker" role="radiogroup" aria-label="Ton personnage">
+                <span id="characterName" class="character-name"></span>
+                <div id="characterButtons" class="character-buttons"></div>
+            </div>
             <button id="singlePlayerBtn" class="btn btn-primary btn-big solo-btn">Jouer contre l'IA</button>
             <div class="level-picker" role="radiogroup" aria-label="Nombre d'IA">
                 <span>Adversaires :</span>
@@ -582,6 +601,27 @@
             const saved = parseInt(localStorage.getItem('islandBomber.aiCount'), 10);
             if (saved >= 1 && saved <= 3) aiCount = saved;
         } catch (e) { /* stockage indisponible : 1 IA */ }
+        // Personnages : la baigneuse d'origine ou une femme à tête d'animal
+        // (planches assets/src/perso_<animal>.jpg). La couleur du maillot
+        // reste celle de la place (rouge, bleu, vert, jaune).
+        const CHARACTERS = {
+            goeland: 'Goéland', poisson: 'Poisson-clown', tortue: 'Tortue',
+            crabe: 'Crabe', flamant: 'Flamant rose', dauphin: 'Dauphin', baigneuse: 'Baigneuse'
+        };
+        const ANIMALS = ['goeland', 'poisson', 'tortue', 'crabe', 'flamant', 'dauphin'];
+        let myCharacter = 'goeland';
+        try {
+            const saved = localStorage.getItem('islandBomber.character');
+            if (CHARACTERS[saved]) myCharacter = saved;
+        } catch (e) { /* stockage indisponible : goéland */ }
+
+        // Animal d'une IA : au hasard, en évitant ceux déjà pris si possible
+        function pickAiCharacter(used) {
+            const free = ANIMALS.filter(a => !used.includes(a));
+            const pool = free.length ? free : ANIMALS;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
         // Réglages de partie (menu « Réglages de la partie », retenus dans le
         // navigateur). Recopiés dans le match à la création : c'est le
         // créateur qui décide pour tout le monde.
@@ -902,10 +942,15 @@
             player4: { x: 0, y: GRID_SIZE - 1, color: '#f2c230', skin: 'yellow', word: 'jaune', ai: 'IA jaune', accent: 'var(--yellow)' }
         };
         const PLAYER_IDS = Object.keys(PLAYER_SLOTS);
-        function spawnPlayer(id, ai = false) {
+        // character : personnage (CHARACTERS) ; par défaut celui choisi dans
+        // le menu pour un humain, un animal au hasard pour une IA
+        function spawnPlayer(id, ai = false, character = null) {
             const slot = PLAYER_SLOTS[id];
             const player = createPlayer(slot.x, slot.y, slot.color);
             if (ai) player.ai = true;
+            player.character = character || (ai
+                ? pickAiCharacter(Object.values(gameState.players).map(p => p && p.character))
+                : myCharacter);
             return player;
         }
 
@@ -1073,7 +1118,7 @@
             const players = {};
             const scores = {};
             ids.forEach(id => {
-                players[id] = spawnPlayer(id, isAi(id));
+                players[id] = spawnPlayer(id, isAi(id), gameState.players[id].character);
                 scores[id] = resetScores ? 0 : (m.scores[id] || 0);
             });
             database.ref(`games/${gameState.roomId}`).update({
@@ -2510,12 +2555,85 @@
             }
         }
 
-        // Tenue de chaque joueur
-        // (maillot à la couleur de la place ; IA : maillot anthracite et
-        // bandana de la couleur de sa place, voir tools/build_sprites.py)
-        function skinOf(playerId) {
-            const skin = (PLAYER_SLOTS[playerId] || PLAYER_SLOTS.player1).skin;
-            return isAi(playerId) && skin !== 'red' ? 'ai_' + skin : skin;
+        // Apparence d'un joueur : personnage + couleur de sa place
+        function lookOf(playerId) {
+            const p = gameState.players[playerId];
+            return {
+                character: (p && CHARACTERS[p.character]) ? p.character : 'baigneuse',
+                color: (PLAYER_SLOTS[playerId] || PLAYER_SLOTS.player1).skin
+            };
+        }
+
+        // Maillot recoloré à la volée : les animaux n'existent dans l'atlas
+        // qu'en maillot BLEU (tools/build_sprites.py). Pour les autres
+        // couleurs, on copie l'image dans un petit canvas et on change la
+        // teinte des pixels bleu vif (mêmes teintes que SUIT_HUES).
+        const SUIT_TINTS = { red: 0, green: 0.33, yellow: 0.14 };
+        const tintCache = {};
+        function tintedFrame(name, color) {
+            const key = name + '@' + color;
+            if (key in tintCache) return tintCache[key];
+            const pos = SPRITE_ATLAS.frames[name];
+            const S = SPRITE_ATLAS.size;
+            const c = document.createElement('canvas');
+            c.width = c.height = S;
+            const cctx = c.getContext('2d');
+            cctx.drawImage(spriteSheet, pos[0], pos[1], S, S, 0, 0, S, S);
+            try {
+                const img = cctx.getImageData(0, 0, S, S);
+                const d = img.data;
+                const hue = SUIT_TINTS[color];
+                for (let i = 0; i < d.length; i += 4) {
+                    if (d[i + 3] === 0) continue;
+                    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+                    const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
+                    if (max !== b || delta === 0) continue;
+                    const h = ((r - g) / delta + 4) / 6;   // teinte quand le bleu domine
+                    const sat = delta / max;
+                    if (h < 0.55 || h > 0.72 || sat < 0.45 || max < 0.25) continue;
+                    const v = color === 'yellow' ? Math.min(1, max * 1.25) : max;
+                    const [nr, ng, nb] = hsvToRgb(hue, sat, v);
+                    d[i] = nr; d[i + 1] = ng; d[i + 2] = nb;
+                }
+                cctx.putImageData(img, 0, 0);
+            } catch (e) {
+                // file:// : canvas « contaminé », on garde le maillot bleu
+            }
+            return (tintCache[key] = c);
+        }
+        function hsvToRgb(h, s, v) {
+            const i = Math.floor(h * 6), f = h * 6 - i;
+            const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+            const [r, g, b] = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i % 6];
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+
+        // Dessine l'image `dir`/`frame` du personnage `look` centrée en (cx, cy)
+        function drawCharacter(look, dir, frame, cx, cy, size, rotation = 0) {
+            if (look.character === 'baigneuse') {
+                return drawSprite(`${look.color}_${dir}_${frame}`, cx, cy, size, size, rotation);
+            }
+            const name = `${look.character}_${dir}_${frame}`;
+            if (look.color === 'blue' || !SPRITE_ATLAS.frames[name]) {
+                return drawSprite(name, cx, cy, size, size, rotation);
+            }
+            ctx.save();
+            ctx.translate(cx, cy);
+            if (rotation) ctx.rotate(rotation);
+            ctx.drawImage(tintedFrame(name, look.color), -size / 2, -size / 2, size, size);
+            ctx.restore();
+        }
+
+        // Portrait (fiche joueur, salle d'attente, menu) en style CSS
+        function portraitCss(look, size) {
+            if (look.character === 'baigneuse') return spriteCss(`${look.color}_down_0`, size);
+            const name = `${look.character}_down_0`;
+            if (look.color === 'blue' || !spritesReady()) return spriteCss(name, size);
+            const c = tintedFrame(name, look.color);
+            if (!c.dataUrl) {
+                try { c.dataUrl = c.toDataURL(); } catch (e) { return spriteCss(name, size); }
+            }
+            return `background-image:url(${c.dataUrl});background-size:${size}px ${size}px;`;
         }
 
         // État d'animation par joueur, calculé à partir de la position
@@ -2562,12 +2680,28 @@
 
             // Le personnage dépasse un peu de sa case vers le haut (vue 3/4)
             const size = TILE_SIZE * 1.25;
-            drawSprite(`${skinOf(playerId)}_${a.dir}_${frame}`, x, y + TILE_SIZE / 2 - size / 2 + 1, size);
+            drawCharacter(lookOf(playerId), a.dir, frame, x, y + TILE_SIZE / 2 - size / 2 + 1, size);
+
+            // IA : petite étiquette au-dessus de la tête
+            const p = gameState.players[playerId];
+            let top = y + TILE_SIZE / 2 - size - 2;
+            if (p && p.ai) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(40, 30, 20, 0.7)';
+                ctx.beginPath();
+                ctx.roundRect(x - 8, top - 5, 16, 10, 5);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = '800 8px "Baloo 2", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('IA', x, top + 0.5);
+                ctx.restore();
+                top -= 10;
+            }
 
             // Malus : petit nuage vert qui flotte au-dessus de la tête
-            const p = gameState.players[playerId];
             if (p && p.malus && now < (p.malusUntil || 0)) {
-                const top = y + TILE_SIZE / 2 - size - 2;
                 ctx.save();
                 ctx.fillStyle = 'rgba(120, 170, 60, 0.75)';
                 for (let i = 0; i < 3; i++) {
@@ -3045,7 +3179,7 @@
                     else if (p.ai) action = `<button type="button" class="btn btn-small btn-ghost" data-remove-ai="${id}">Retirer</button>`;
                 }
                 return `<li class="${p ? '' : 'free'}" style="--accent:${slot.accent}">
-                    <span class="portrait sprite" style="${p ? spriteCss((p.ai ? 'ai_' + slot.skin : slot.skin) + '_down_0', 40) : ''}"></span>
+                    <span class="portrait sprite" style="${p ? portraitCss({ character: CHARACTERS[p.character] ? p.character : 'baigneuse', color: slot.skin }, 40) : ''}"></span>
                     <span class="slot-name">${label}</span>${action}</li>`;
             }).join('');
             const count = PLAYER_IDS.filter(id => players[id]).length;
@@ -3102,7 +3236,10 @@
 
             const ids = PLAYER_IDS.slice(0, 1 + aiCount);
             const players = {};
-            ids.forEach((id, i) => { players[id] = spawnPlayer(id, i > 0); });
+            ids.forEach((id, i) => {
+                players[id] = spawnPlayer(id, i > 0,
+                    i > 0 ? pickAiCharacter([myCharacter, ...Object.values(players).map(p => p.character)]) : null);
+            });
             
             // Créer la partie dans Firebase avec le joueur humain et les IA
             const gameRef = database.ref(`games/${roomId}`);
@@ -3555,7 +3692,7 @@
                     const p = gameState.players[id];
                     if (fx.alive[id] && p && !p.alive) {
                         const a = playerAnim[id] || { x: p.x, y: p.y, dir: 'down' };
-                        fx.deaths.push({ id, x: a.x, y: a.y, dir: a.dir, start: now });
+                        fx.deaths.push({ id, look: lookOf(id), x: a.x, y: a.y, dir: a.dir, start: now });
                         sfx('death');
                     }
                 }
@@ -3615,7 +3752,7 @@
                 ctx.globalAlpha = 1 - t;
                 // monte en tournant
                 const rise = -TILE_SIZE * 0.9 * t;
-                drawSprite(`${skinOf(d.id)}_${d.dir}_0`, d.x, d.y + rise, size, size, t * Math.PI * 4);
+                drawCharacter(d.look, d.dir, 0, d.x, d.y + rise, size, t * Math.PI * 4);
                 ctx.restore();
             }
         }
@@ -3693,23 +3830,23 @@
                 const p = gameState.players[id];
                 const score = gameState.match && gameState.match.scores ? gameState.match.scores[id] : 0;
                 const malus = p.malus && Date.now() < (p.malusUntil || 0) ? p.malus : '';
-                return [id, nameOf(id), p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
+                return [id, nameOf(id), p.character, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
                         p.canKick, p.hasDetonator, p.pierce, malus].join(':');
-            }).join('|') + (window.SPRITE_ATLAS ? 's' : '');
+            }).join('|') + (spritesReady() ? 's' : '');
             if (key !== lastHudKey) {
                 lastHudKey = key;
                 hud.innerHTML = ids.map(id => {
                     const p = gameState.players[id];
                     const label = { name: nameOf(id), accent: PLAYER_SLOTS[id].accent };
                     const speed = Math.round(((p.speedMultiplier || 1) - 1) / 0.2);
-                    const you = id === gameState.playerId ? '<small>vous</small>' : '<small>&nbsp;</small>';
+                    const you = `<small>${id === gameState.playerId ? 'vous · ' : ''}${CHARACTERS[lookOf(id).character]}</small>`;
                     const m = gameState.match;
                     const won = m && m.scores ? (m.scores[id] || 0) : 0;
                     const need = m ? m.roundsToWin : DEFAULT_ROUNDS_TO_WIN;
                     const pips = Array.from({ length: need }, (_, i) =>
                         `<span class="pip${i < won ? ' won' : ''}"></span>`).join('');
                     return `<div class="player-card${p.alive ? '' : ' dead'}" style="--accent:${label.accent}">
-                        <span class="portrait sprite" style="${spriteCss(skinOf(id) + '_down_0', 52)}"></span>
+                        <span class="portrait sprite" style="${portraitCss(lookOf(id), 52)}"></span>
                         <div class="name">${label.name}${you}<span class="pips" title="Manches gagnées : ${won}">${pips}</span></div>
                         <div class="stats">
                             <span class="stat" title="Bombes"><i class="sprite" style="${spriteCss('bonus_bomb', 20)}"></i>${p.maxBombs}</span>
@@ -3809,6 +3946,26 @@
             showAiLevel();
         }));
         showAiLevel();
+
+        // Choix du personnage : portraits (maillot rouge = celui de l'hôte).
+        // Les recolorations attendent que l'atlas soit chargé.
+        const characterButtons = document.getElementById('characterButtons');
+        function renderCharacterPicker() {
+            document.getElementById('characterName').textContent = 'Ton personnage : ' + CHARACTERS[myCharacter];
+            characterButtons.innerHTML = Object.keys(CHARACTERS).map(c =>
+                `<button type="button" role="radio" data-character="${c}" aria-checked="${c === myCharacter}" ` +
+                `title="${CHARACTERS[c]}" aria-label="${CHARACTERS[c]}" ` +
+                `style="${portraitCss({ character: c, color: 'red' }, 52)}"></button>`).join('');
+        }
+        characterButtons.addEventListener('click', e => {
+            const b = e.target.closest('[data-character]');
+            if (!b) return;
+            myCharacter = b.dataset.character;
+            try { localStorage.setItem('islandBomber.character', myCharacter); } catch (err) { /* non bloquant */ }
+            renderCharacterPicker();
+        });
+        renderCharacterPicker();
+        spriteSheet.addEventListener('load', renderCharacterPicker);
 
         // Réglages de la partie : manches, marée, quantité de bonus
         document.querySelectorAll('.settings [data-setting]').forEach(group => {

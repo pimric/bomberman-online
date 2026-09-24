@@ -585,11 +585,27 @@ async function scenarioSoloTroisIA() {
     let room = null;
     try {
         await P.page.click('[data-ai-count="3"]');
+        await P.page.click('[data-character="crabe"]');
         await P.page.click('#singlePlayerBtn');
         await P.page.waitForFunction(() => gameState.gameStarted && Object.keys(gameState.players).length === 4, { timeout: 10000 });
         room = await P.page.evaluate(() => gameState.roomId);
         const ais = await P.page.evaluate(() => aiIds().sort().join(','));
         check('Solo 3 IA : 3 IA dans les places 2 à 4', ais === 'player2,player3,player4', ais);
+        const looks = await P.page.evaluate(() => ['player1', 'player2', 'player3', 'player4'].map(id => gameState.players[id].character));
+        check('Personnages : le joueur a le crabe, les IA 3 autres animaux différents',
+            looks[0] === 'crabe' && new Set(looks).size === 4 && looks.slice(1).every(c => ['goeland', 'poisson', 'tortue', 'crabe', 'flamant', 'dauphin'].includes(c)), looks.join(','));
+        const tint = await P.page.evaluate(() => {
+            const c = tintedFrame('goeland_down_0', 'red');
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            let red = 0, blue = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] < 200) continue;
+                if (d[i] > 180 && d[i + 1] < 90 && d[i + 2] < 90) red++;
+                if (d[i + 2] > 180 && d[i] < 90) blue++;
+            }
+            return { red, blue };
+        });
+        check('Personnages : maillot recoloré (bleu → rouge)', tint.red > 100 && tint.blue < 10, JSON.stringify(tint));
         const info = await P.page.$eval('#gameInfo', e => e.textContent);
         check('Solo 3 IA : message de partie', info.includes('contre 3 IA'), info);
         await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });

@@ -151,18 +151,6 @@ def swimsuit_to(hue):
     return rule
 
 
-def make_ai(head_top, bandana_hue):
-    """IA : maillot anthracite + bandana (haut des cheveux) à la couleur de
-    sa place (bleu, vert ou jaune)."""
-    def rule(h, s, v, fy):
-        if is_swimsuit(h, s, v):
-            return (0.62, 0.15, v * 0.35)
-        hair = 0.03 <= h <= 0.12 and s > 0.3 and 0.2 < v < 0.75
-        if hair and fy < head_top:
-            return (bandana_hue, 0.85, min(1, v * 1.6))
-    return rule
-
-
 # ------------------------------------------------------------ objets
 def fix_badge(c, r=None):
     """Efface le texte (+BOMB…) qui chevauche le bas du badge : on
@@ -192,6 +180,31 @@ def flame_square(c, where):
     side = h
     x0 = (w - side) // 2 if where == 'middle' else w - side
     return c.crop((x0, 0, x0 + side, h))
+
+
+# ------------------------------------------------------------ personnages
+ANIMALS = ['goeland', 'poisson', 'tortue', 'crabe', 'flamant', 'dauphin']
+
+
+def walk_cycle(path):
+    """Découpe une planche personnage (3 lignes de 7 : face, dos, profil
+    vers la droite, mise en page de personnage.png) en cycles de marche."""
+    perso = Image.open(path).convert('RGB')
+    boxes = components(perso)
+    assert len(boxes) == 21, f'{path} : {len(boxes)} images au lieu de 21'
+    # même échelle pour toutes les images (la plus haute tient dans la case)
+    char_scale = SPRITE / max(max(b[2] - b[0], b[3] - b[1]) for b in boxes)
+    frames = [fit_character(cutout(perso, b), scale=char_scale) for b in boxes]
+    rows = [frames[0:7], frames[7:14], frames[14:21]]
+    # Choix des images de marche (voir planche) : la ligne 1 mélange des
+    # vues, seules les 4 premières sont de face. Cycle : debout, pas, debout, pas.
+    walk = {
+        'down': [rows[0][3], rows[0][0], rows[0][3], rows[0][1]],
+        'up': [rows[1][3], rows[1][0], rows[1][3], rows[1][1]],
+        'right': [rows[2][3], rows[2][0], rows[2][1], rows[2][2], rows[2][3], rows[2][4], rows[2][5], rows[2][6]],
+    }
+    walk['left'] = [f.transpose(Image.FLIP_LEFT_RIGHT) for f in walk['right']]
+    return walk
 
 
 # ------------------------------------------------------------ assemblage
@@ -237,31 +250,24 @@ def main():
     sprites['bomb_remote'] = fit(o2[3])
     sprites['bonus_malus'] = fit(o2[6])
 
-    perso = Image.open(os.path.join(SRC, 'personnage.png')).convert('RGB')
-    boxes = components(perso)
-    # même échelle pour toutes les images (la plus haute tient dans la case)
-    char_scale = SPRITE / max(max(b[2] - b[0], b[3] - b[1]) for b in boxes)
-    frames = [fit_character(cutout(perso, b), scale=char_scale) for b in boxes]
-    rows = [frames[0:7], frames[7:14], frames[14:21]]
-    # Choix des images de marche (voir planche) : la ligne 1 mélange des
-    # vues, seules les 4 premières sont de face. Cycle : debout, pas, debout, pas.
-    walk = {
-        'down': [rows[0][3], rows[0][0], rows[0][3], rows[0][1]],
-        'up': [rows[1][3], rows[1][0], rows[1][3], rows[1][1]],
-        'right': [rows[2][3], rows[2][0], rows[2][1], rows[2][2], rows[2][3], rows[2][4], rows[2][5], rows[2][6]],
-    }
-    walk['left'] = [f.transpose(Image.FLIP_LEFT_RIGHT) for f in walk['right']]
-
-    # Humains : maillot à la couleur de leur place. IA : maillot anthracite
-    # + bandana de la couleur de sa place (jamais rouge : player1 = l'hôte)
+    # Baigneuse (planche d'origine, maillot rouge) : une variante par couleur
+    walk = walk_cycle(os.path.join(SRC, 'personnage.png'))
     skins = {'red': None}
     for color, hue in SUIT_HUES.items():
         skins[color] = swimsuit_to(hue)
-        skins[f'ai_{color}'] = make_ai(0.22, hue)
     for skin, rule in skins.items():
         for direction, seq in walk.items():
             for i, f in enumerate(seq):
                 sprites[f'{skin}_{direction}_{i}'] = recolor(f, rule) if rule else f
+
+    # Animaux (planches perso_<animal>.jpg, maillot BLEU) : une seule
+    # version dans l'atlas ; le jeu recolore le maillot à la volée pour
+    # les autres couleurs (tintedFrame dans game.html), sinon l'atlas
+    # pèserait 4 fois plus lourd.
+    for animal in ANIMALS:
+        for direction, seq in walk_cycle(os.path.join(SRC, f'perso_{animal}.jpg')).items():
+            for i, f in enumerate(seq):
+                sprites[f'{animal}_{direction}_{i}'] = f
 
     # Atlas en grille
     names = list(sprites)
@@ -274,6 +280,7 @@ def main():
         atlas.paste(sprites[n], (x, y))
         meta['frames'][n] = [x, y]
     meta['walk'] = {d: len(s) for d, s in walk.items()}
+    meta['animals'] = ANIMALS
     atlas.save(OUT_PNG, optimize=True)
     # .js plutôt que .json : chargé par une balise <script>, il marche aussi
     # quand le jeu est ouvert en file:// (fetch y est bloqué)
