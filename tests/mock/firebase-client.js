@@ -229,6 +229,7 @@
             const path = this.path;
             return {
                 remove: () => { window.__mockSend({ type: 'onDisconnect', path, action: 'remove' }); return Promise.resolve(); },
+                set: value => { window.__mockSend({ type: 'onDisconnect', path, action: 'set', value }); return Promise.resolve(); },
                 cancel: () => { window.__mockSend({ type: 'onDisconnect', path, action: 'cancel' }); return Promise.resolve(); }
             };
         }

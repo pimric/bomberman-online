@@ -6,7 +6,9 @@
 //     ressources externes (polices Google).
 //   - Les ops de chaque page sont appliquées à la base maître puis
 //     renvoyées à toutes les pages, dans le même ordre pour tout le monde.
-//   - onDisconnect : appliqué quand la page ou son navigateur se ferme.
+//   - onDisconnect (remove / set, TIMESTAMP serveur résolu ici) : appliqué
+//     quand la page ou son navigateur se ferme, ou quand la page se recharge
+//     (nouveau « hello » : l'ancienne connexion est morte).
 const fs = require('fs');
 const path = require('path');
 
@@ -52,11 +54,19 @@ function createHub() {
         }
     }
 
+    const resolve = v => (v && typeof v === 'object'
+        ? (v['.sv'] === 'timestamp' ? Date.now() : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, resolve(x)])))
+        : v);
     let serverOps = 0;
+    function runOnDisconnect(client) {
+        const writes = [...client.onDisconnect.entries()].map(([p, action]) =>
+            [p, action.type === 'set' ? resolve(action.value) : null]);
+        client.onDisconnect.clear();
+        if (writes.length) broadcast({ id: 'server:' + (serverOps++), writes });
+    }
     function disconnect(client) {
         if (!clients.delete(client)) return;
-        const writes = [...client.onDisconnect.keys()].map(p => [p, null]);
-        if (writes.length) broadcast({ id: 'server:' + (serverOps++), writes });
+        runOnDisconnect(client);
     }
 
     async function attach(page, browser) {
@@ -66,10 +76,16 @@ function createHub() {
         if (browser) browser.on('disconnected', () => disconnect(client));
 
         await page.exposeFunction('__mockSend', msg => {
-            if (msg.type === 'hello') return master;
+            if (msg.type === 'hello') {
+                // rechargement de la page : l'ancienne connexion est morte
+                if (client.helloed) runOnDisconnect(client);
+                client.helloed = true;
+                return master;
+            }
             if (msg.type === 'op') broadcast(msg.op);
             if (msg.type === 'onDisconnect') {
-                if (msg.action === 'remove') client.onDisconnect.set(msg.path, 'remove');
+                if (msg.action === 'remove') client.onDisconnect.set(msg.path, { type: 'remove' });
+                else if (msg.action === 'set') client.onDisconnect.set(msg.path, { type: 'set', value: msg.value });
                 else {
                     // cancel() : le chemin et tous ses descendants
                     for (const p of [...client.onDisconnect.keys()]) {

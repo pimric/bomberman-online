@@ -338,6 +338,21 @@
             body.touch:not(.in-menu) #gameInfo { display: none; }
         }
 
+        .resume-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 0 0 12px;
+            padding: 10px;
+            border-radius: 14px;
+            background: #fff;
+            border: 2px dashed var(--sunset);
+            font-weight: 700;
+        }
+        .name-input { display: block; margin: 12px auto 0; width: min(260px, 100%); text-align: center; }
+
         /* Réglages de la partie (menu) */
         .menu-step {
             margin: 18px 0 4px;
@@ -438,6 +453,7 @@
         <header class="topbar">
             <a href="index.html" class="logo">Island Bomber</a>
             <div class="topbar-actions">
+                <button id="pauseBtn" class="btn btn-small btn-ghost" type="button" style="display: none;">Pause</button>
                 <button id="soundBtn" class="btn btn-small btn-ghost" type="button" aria-pressed="true">Son : oui</button>
                 <a href="index.html" class="btn btn-small btn-ghost">Accueil</a>
             </div>
@@ -445,6 +461,10 @@
 
         <section id="roomControls" class="card">
             <h2 class="card-title">Choisis ta partie</h2>
+            <div id="resumeBox" class="resume-box" style="display: none;">
+                Partie <strong id="resumeCode"></strong> en cours
+                <button id="resumeBtn" class="btn btn-primary btn-small" type="button">Reprendre la partie</button>
+            </div>
 
             <h3 class="menu-step">Toi</h3>
             <div class="character-picker" role="radiogroup" aria-label="Ton personnage">
@@ -452,12 +472,18 @@
                 <div id="characterButtons" class="character-buttons"></div>
             </div>
             <div id="suitButtons" class="suit-buttons" role="radiogroup" aria-label="Couleur du maillot"></div>
+            <input type="text" id="nameInput" class="name-input" maxlength="12" placeholder="Ton pseudo (facultatif)" autocomplete="off">
 
             <h3 class="menu-step">La partie</h3>
             <div class="level-picker" role="radiogroup" aria-label="Mode de jeu" data-setting="mode">
                 <span>Mode :</span>
                 <button type="button" role="radio" data-value="libre">Chacun pour soi</button>
                 <button type="button" role="radio" data-value="equipes">Équipes 2 contre 2</button>
+            </div>
+            <div id="friendlyFirePicker" class="level-picker" role="radiogroup" aria-label="Tirs amis" data-setting="friendlyFire">
+                <span>Tirs amis (équipes) :</span>
+                <button type="button" role="radio" data-value="oui">Oui</button>
+                <button type="button" role="radio" data-value="non">Non</button>
             </div>
             <div class="level-picker" role="radiogroup" aria-label="Carte" data-setting="map">
                 <span>Carte :</span>
@@ -782,6 +808,16 @@
             if (SUIT_COLORS[saved]) myColor = saved;
         } catch (e) { /* stockage indisponible : rouge */ }
 
+        // Pseudo (facultatif, 12 caractères) ; vide = « Joueur <couleur> »
+        let myName = '';
+        try { myName = cleanName(localStorage.getItem('islandBomber.name') || ''); } catch (e) { /* sans pseudo */ }
+        function cleanName(text) {
+            return String(text).replace(/[<>"&]/g, '').replace(/\s+/g, ' ').trim().slice(0, 12);
+        }
+        function escapeHtml(text) {
+            return String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        }
+
         // Chacun pour soi : pas deux fois la même couleur. La couleur voulue
         // si elle est libre, sinon la première libre (SUIT_AUTO_ORDER).
         // Ordre d'attribution automatique : couleurs bien distinctes d'abord
@@ -814,7 +850,8 @@
             bonusRate: 'normal',
             bonusTypes: [0, 1, 2, 3, 4, 5, 6], // BONUS_TYPES (déclarées plus bas)
             map: 'plage',                      // THEMES ou 'aleatoire'
-            mode: 'libre'                      // 'libre' ou 'equipes'
+            mode: 'libre',                     // 'libre' ou 'equipes'
+            friendlyFire: true                 // équipes : les bombes d'un coéquipier blessent
         };
         try {
             const saved = JSON.parse(localStorage.getItem('islandBomber.settings') || '{}');
@@ -825,6 +862,7 @@
             // liste en dur : THEMES est déclaré plus bas
             if (['plage', 'lagon', 'volcan', 'jungle', 'ponton', 'grotte', 'tempete', 'aleatoire'].includes(saved.map)) gameSettings.map = saved.map;
             if (['libre', 'equipes'].includes(saved.mode)) gameSettings.mode = saved.mode;
+            if (typeof saved.friendlyFire === 'boolean') gameSettings.friendlyFire = saved.friendlyFire;
         } catch (e) { /* stockage indisponible : réglages par défaut */ }
         function saveSettings() {
             try { localStorage.setItem('islandBomber.settings', JSON.stringify(gameSettings)); } catch (e) { /* non bloquant */ }
@@ -1087,12 +1125,16 @@
                 roundsToWin: rounds > 0 ? rounds : gameSettings.roundsToWin,
                 roundTime: tide >= 0 ? tide * 1000 : gameSettings.tideSeconds * 1000,
                 bonusRate: BONUS_RATES[gameSettings.bonusRate],
+                // délai de retour d'un joueur déconnecté avant qu'il soit
+                // retiré (?grace=secondes pour les tests)
+                offlineGrace: (parseFloat(params.get('grace')) || 60) * 1000,
                 // carte choisie (« aleatoire » : tirée à chaque manche) et
                 // thème de la manche en cours
                 mapChoice: params.get('carte') || gameSettings.map,
                 // chacun pour soi ou équipes 2 contre 2 (couleurs d'équipe
                 // tirées du maillot du créateur)
                 mode: params.get('mode') || gameSettings.mode,
+                friendlyFire: gameSettings.friendlyFire,
                 teamColors: teamColorsFor(myColor),
                 theme: pickTheme(params.get('carte') || gameSettings.map),
                 // chaîne « 0,1,2 » : un tableau vide disparaîtrait de Firebase
@@ -1121,6 +1163,7 @@
                 roundOver: false,
                 lastWinner: null,
                 matchWinner: null,
+                host: 'player1',
                 ...matchSettingsFromUrl()
             };
         }
@@ -1146,11 +1189,14 @@
         // character : personnage (CHARACTERS), par défaut celui du menu pour
         // un humain, un animal au hasard pour une IA. suit : couleur du
         // maillot (SUIT_COLORS), décidée par l'appelant (freeSuit, équipes).
-        function spawnPlayer(id, ai = false, character = null, suit = myColor) {
+        // name : pseudo (par défaut le mien pour un humain, aucun pour une IA)
+        function spawnPlayer(id, ai = false, character = null, suit = myColor, name = undefined) {
             const slot = PLAYER_SLOTS[id];
             const player = createPlayer(slot.x, slot.y, SUIT_COLORS[suit].css);
             if (ai) player.ai = true;
             player.suit = suit;
+            const pseudo = name !== undefined ? name : (ai ? '' : myName);
+            if (pseudo) player.name = pseudo;
             player.character = character || (ai
                 ? pickAiCharacter(Object.values(gameState.players).map(p => p && p.character))
                 : myCharacter);
@@ -1227,12 +1273,20 @@
             const m = gameState.match;
             return m && m.scores ? Object.keys(m.scores) : [];
         }
-        function isHost() {
-            return gameState.playerId === 'player1';
+        // Hôte : match.host (player1 au départ ; relais si l'hôte se déconnecte)
+        function hostId() {
+            return (gameState.match && gameState.match.host) || 'player1';
         }
-        // Joueurs du match encore là (un joueur parti disparaît de players)
+        function isHost() {
+            return !!gameState.playerId && gameState.playerId === hostId();
+        }
+        // Joueurs du match encore là : un joueur parti disparaît de players,
+        // un joueur déconnecté (offline, en attente de son retour) est mis de côté
         function presentIds() {
-            return matchIds().filter(id => gameState.players[id]);
+            return matchIds().filter(id => gameState.players[id] && !gameState.players[id].offline);
+        }
+        function offlineIds() {
+            return matchIds().filter(id => gameState.players[id] && gameState.players[id].offline);
         }
         function suitOf(id) {
             const p = gameState.players[id];
@@ -1242,6 +1296,8 @@
         // Même maillot (équipes) : numéro de la place pour les distinguer.
         function nameOf(id) {
             if (!PLAYER_SLOTS[id]) return id;
+            const pseudo = gameState.players[id] && gameState.players[id].name;
+            if (pseudo && !isAi(id)) return pseudo;
             const suit = SUIT_COLORS[suitOf(id)];
             if (isAi(id) && aiIds().length === 1) return "L'IA";
             const name = isAi(id) ? 'IA ' + suit.fem : 'Joueur ' + suit.word;
@@ -1249,10 +1305,15 @@
                 suitOf(o) === suitOf(id) && isAi(o) === isAi(id));
             return twin ? `${name} ${id.slice(-1)}` : name;
         }
-        // Sujet d'une phrase : « Le joueur bleu », « L'IA verte »
+        // « Vous êtes le joueur rouge » / « Vous êtes Paul »
+        function youAreText(id) {
+            const p = gameState.players[id];
+            return p && p.name ? `Vous êtes ${p.name}` : `Vous êtes le ${nameOf(id).toLowerCase()}`;
+        }
+        // Sujet d'une phrase : « Le joueur bleu », « L'IA verte », « Paul »
         function subjectOf(id) {
             const name = nameOf(id);
-            if (name.startsWith("L'")) return name;
+            if (name.startsWith("L'") || (!isAi(id) && gameState.players[id] && gameState.players[id].name)) return name;
             return isAi(id) ? "L'" + name : 'Le ' + name.toLowerCase();
         }
         // Score vu par ce joueur : « 2 à 1 » en duel, sinon la liste
@@ -1269,7 +1330,7 @@
             }
             return ids.slice()
                 .sort((a, b) => (m.scores[b] || 0) - (m.scores[a] || 0))
-                .map(id => `${id === me ? 'vous' : (isAi(id) ? nameOf(id).replace("L'IA", 'IA') : SUIT_COLORS[suitOf(id)].word)} ${m.scores[id] || 0}`)
+                .map(id => `${id === me ? 'vous' : (isAi(id) ? nameOf(id).replace("L'IA", 'IA') : (gameState.players[id].name || SUIT_COLORS[suitOf(id)].word))} ${m.scores[id] || 0}`)
                 .join(', ');
         }
         // Score en fin de phrase : « … gagné 2 à 1 ! » / « … gagné (vous 3, bleu 1) ! »
@@ -1308,15 +1369,20 @@
             const present = presentIds();
             const endScreen = document.getElementById('gameControls');
 
-            // La partie n'a démarré qu'avec tous les joueurs : un absent a
-            // quitté (onDisconnect). On continue sans lui, sauf si l'hôte est
-            // parti (plus personne pour juger les manches ni simuler les IA)
-            // ou s'il ne reste qu'un joueur.
+            // La partie n'a démarré qu'avec tous les joueurs : un absent est
+            // déconnecté (offline, peut revenir) ou parti. On continue sans
+            // lui tant qu'il reste au moins 2 camps ; sinon on attend son
+            // retour (partie figée), puis on s'arrête s'il ne revient pas.
             const camps = teamMode() ? new Set(present.map(id => TEAM_OF[id])).size : present.length;
-            if (!soloMode && (!gameState.players.player1 || camps < 2)) {
-                gameInfo.textContent = !gameState.players.player1 ? `L'hôte a quitté la partie`
-                    : ids.length === 2 ? `L'adversaire a quitté la partie` : `Tous les adversaires ont quitté la partie`;
+            if (!soloMode && camps < 2) {
+                const waiting = offlineIds().filter(id => id !== gameState.playerId);
+                if (waiting.length > 0) {
+                    gameInfo.textContent = `${waiting.map(nameOf).join(', ')} s'est déconnecté - on attend son retour…`;
+                    return true;
+                }
+                gameInfo.textContent = ids.length === 2 ? `L'adversaire a quitté la partie` : `Tous les adversaires ont quitté la partie`;
                 endScreen.style.display = 'block';
+                clearSavedSession();
                 return true;
             }
             if (m.matchWinner) {
@@ -1377,11 +1443,15 @@
         function startRound(resetScores) {
             const m = gameState.match;
             if (!m || !gameState.roomId) return;
-            const ids = presentIds();
+            // les déconnectés gardent leur place (et leur score) : ils sautent
+            // la manche, mais peuvent revenir
+            const ids = matchIds().filter(id => gameState.players[id]);
             const players = {};
             const scores = {};
             ids.forEach(id => {
-                players[id] = spawnPlayer(id, isAi(id), gameState.players[id].character, suitOf(id));
+                const old = gameState.players[id];
+                players[id] = spawnPlayer(id, isAi(id), old.character, suitOf(id), old.name || '');
+                if (old.offline) Object.assign(players[id], { offline: old.offline, alive: false });
                 scores[id] = resetScores ? 0 : (m.scores[id] || 0);
             });
             database.ref(`games/${gameState.roomId}`).update({
@@ -1760,12 +1830,72 @@
             ctx.drawImage(darkCanvas, 0, 0);
         }
 
+        //--------------------------------------------------
+        // PAUSE (solo uniquement : en ligne, les autres continuent)
+        //--------------------------------------------------
+        // Tout le temps du jeu est en heures absolues (mèches, flammes,
+        // marée, malus, noix de coco…) : à la reprise, on décale tout de la
+        // durée de la pause.
+        let pausedAt = 0;
+        function isPaused() {
+            return pausedAt > 0;
+        }
+        function canPause() {
+            const m = gameState.match;
+            return soloMode && gameState.gameStarted && !!m && !m.matchWinner;
+        }
+        function togglePause() {
+            if (isPaused()) return resumeGame();
+            if (!canPause()) return;
+            pausedAt = Date.now();
+            for (const k of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) gameState.keys[k] = false;
+        }
+        function resumeGame() {
+            if (!isPaused()) return;
+            const d = Date.now() - pausedAt;
+            pausedAt = 0;
+            if (!gameState.roomId) return;
+            const upd = {};
+            for (const b of gameState.bombs) {
+                b.timer += d;
+                upd[`bombs/${b.id}/timer`] = b.timer;
+                if (b.slideUntil) {
+                    b.slideStart += d;
+                    b.slideUntil += d;
+                    upd[`bombs/${b.id}/slideStart`] = b.slideStart;
+                    upd[`bombs/${b.id}/slideUntil`] = b.slideUntil;
+                }
+            }
+            for (const e of gameState.explosions) {
+                e.timestamp += d;
+                upd[`explosions/${e.id}/timestamp`] = e.timestamp;
+            }
+            for (const s of gameState.storm) upd[`storm/${s.id}/at`] = s.at + d;
+            for (const id of localEntityIds()) {
+                const p = gameState.players[id];
+                if (!p) continue;
+                if (p.moving) p.moveStart += d;
+                if (p.malusUntil) {
+                    p.malusUntil += d;
+                    upd[`players/${id}/malusUntil`] = p.malusUntil;
+                }
+            }
+            const m = gameState.match;
+            if (m && typeof m.roundStart === 'number') {
+                m.roundStart += d;
+                upd['match/roundStart'] = m.roundStart;
+            }
+            if (countdownEnd > Date.now() - d) countdownEnd += d;
+            database.ref(`games/${gameState.roomId}`).update(upd);
+        }
+
         // Mettre à jour l'état du jeu
         function update() {
             if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
             
             // Vérifier si le jeu est terminé
             if (checkGameOver()) return;
+            if (isPaused()) return;
             
             const now = Date.now();
 
@@ -1879,6 +2009,24 @@
 
             if (gameState.gameStarted) renderCountdown(now);
             renderRoundBanner();
+            if (isPaused()) renderPause();
+        }
+
+        function renderPause() {
+            ctx.save();
+            ctx.fillStyle = 'rgba(6, 60, 80, 0.55)';
+            ctx.fillRect(0, 0, VIEW_SIZE, VIEW_SIZE);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = '#8a5a2b';
+            ctx.font = '72px Pacifico, cursive';
+            ctx.strokeText('Pause', VIEW_SIZE / 2, VIEW_SIZE / 2 - 16);
+            ctx.fillStyle = '#fdf1d3';
+            ctx.fillText('Pause', VIEW_SIZE / 2, VIEW_SIZE / 2 - 16);
+            ctx.font = '700 18px "Baloo 2", sans-serif';
+            ctx.fillText(touchMode ? 'Touche « Reprendre » pour continuer' : 'P ou Échap pour reprendre', VIEW_SIZE / 2, VIEW_SIZE / 2 + 44);
+            ctx.restore();
         }
 
         // Entre deux manches : résultat de la manche et score, au centre
@@ -2075,7 +2223,7 @@
             // qu'un personnage plus bas passe devant l'autre)
             const nowRender = Date.now();
             const visiblePlayers = Object.keys(gameState.players)
-                .filter(id => gameState.players[id] && gameState.players[id].alive)
+                .filter(id => gameState.players[id] && gameState.players[id].alive && !gameState.players[id].offline)
                 .map(id => ({ id, pos: getDisplayPosition(id, gameState.players[id]) }))
                 .sort((a, b) => a.pos.y - b.pos.y);
             if (spritesReady()) {
@@ -2194,7 +2342,7 @@
             // Une seule boucle pour toutes les IA de la partie (niveau de
             // l'hôte), qui ne tourne que dans l'onglet de l'hôte
             aiMoveInterval = setInterval(() => {
-                if (!isHost() || !gameState.gameStarted || countdownActive()) return;
+                if (!isHost() || !gameState.gameStarted || countdownActive() || isPaused()) return;
                 if (gameState.match && gameState.match.roundOver) return;
 
                 for (const id of aiIds()) {
@@ -2216,7 +2364,7 @@
             let bestDist = Infinity;
             for (const otherId of Object.keys(gameState.players)) {
                 const other = gameState.players[otherId];
-                if (!isEnemy(id, otherId) || !other || !other.alive) continue;
+                if (!isEnemy(id, otherId) || !other || !other.alive || other.offline) continue;
                 const dist = Math.abs(Math.floor(other.x / TILE_SIZE) - gridX) +
                              Math.abs(Math.floor(other.y / TILE_SIZE) - gridY);
                 if (dist < bestDist) {
@@ -2598,7 +2746,7 @@
             // Qui est dans la portée réelle de la bombe ?
             const inRange = otherId => {
                 const other = gameState.players[otherId];
-                if (otherId === id || !other || !other.alive) return false;
+                if (otherId === id || !other || !other.alive || other.offline) return false;
                 const distX = Math.abs(Math.floor(other.x / TILE_SIZE) - gridX);
                 const distY = Math.abs(Math.floor(other.y / TILE_SIZE) - gridY);
                 return (distX === 0 && distY <= bombRange) || (distY === 0 && distX <= bombRange);
@@ -2713,7 +2861,7 @@
         // Placer une bombe
         function placeBomb() {
             if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
-            if (countdownActive()) return;
+            if (countdownActive() || isPaused()) return;
             if (gameState.match && gameState.match.roundOver) return;
             
             const player = gameState.players[gameState.playerId];
@@ -2854,6 +3002,7 @@
             
             // Créer l'explosion dans Firebase
             const explosion = {
+                owner: bomb.playerId || null,
                 cells: explosionCells,
                 timestamp: Date.now(),
                 duration: EXPLOSION_DURATION
@@ -2914,7 +3063,8 @@
                 const playerGridY = Math.floor(player.y / TILE_SIZE);
                 
                 // Vérifier si le joueur est dans une cellule touchée par l'explosion
-                const isHit = explosionCells.some(cell => cell.x === playerGridX && cell.y === playerGridY);
+                const isHit = flameHurts(bomb.playerId, playerId) &&
+                    explosionCells.some(cell => cell.x === playerGridX && cell.y === playerGridY);
                 
                 if (isHit) {
                     // Repère de debug : qui est mort, où, tué par quelle bombe
@@ -2927,6 +3077,14 @@
                     database.ref(`games/${gameState.roomId}/players/${playerId}/alive`).set(false);
                 }
             }
+        }
+
+        // Tirs amis désactivés (équipes) : la bombe d'un coéquipier ne blesse
+        // pas ; sa propre bombe, si.
+        function flameHurts(ownerId, victimId) {
+            const m = gameState.match;
+            if (!teamMode() || !m || m.friendlyFire !== false || !ownerId || ownerId === victimId) return true;
+            return TEAM_OF[ownerId] !== TEAM_OF[victimId];
         }
 
         // Une case est-elle couverte par une flamme encore active ?
@@ -2948,7 +3106,8 @@
 
                 const gridX = Math.floor(player.x / TILE_SIZE);
                 const gridY = Math.floor(player.y / TILE_SIZE);
-                const onFire = gameState.explosions.length > 0 && isCellOnFire(gridX, gridY);
+                const onFire = gameState.explosions.some(e => flameHurts(e.owner, id) &&
+                    e.cells.some(cell => cell.x === gridX && cell.y === gridY));
                 const drowned = isFlooded(gridX, gridY);
                 const fell = isHole(gridX, gridY);
                 const crushed = coconutHits(gridX, gridY);
@@ -3702,6 +3861,7 @@
         // compléter avec des IA, puis lance la partie (launchGame).
         function createGame() {
             log("Création d'une nouvelle partie multijoueur");
+            document.getElementById('resumeBox').style.display = 'none';
             // Générer un code de salle si non spécifié
             const roomId = roomInput.value || generateId();
             roomInput.value = roomId;
@@ -3775,7 +3935,7 @@
                     gameRef.update({ [`match/scores/${slot}`]: 0 });
                     // On vient de voir l'hôte : pas seul dès le départ
                     joinGame(roomId, slot, false);
-                    gameInfo.textContent = `Partie ${roomId} rejointe - Vous êtes le ${nameOf(slot).toLowerCase()}`;
+                    gameInfo.textContent = `Partie ${roomId} rejointe - ${youAreText(slot)}`;
                 });
             });
         }
@@ -3831,7 +3991,7 @@
                 const p = players[id];
                 const suit = SUIT_COLORS[p && p.suit] || SUIT_COLORS.rouge;
                 const team = teamMode() ? ` <small>${teamName(TEAM_OF[id])}</small>` : '';
-                const label = (!p ? 'Place libre' : nameOf(id) + (id === gameState.playerId ? ' (vous)' : '')) + team;
+                const label = (!p ? 'Place libre' : escapeHtml(nameOf(id)) + (id === gameState.playerId ? ' (vous)' : '')) + team;
                 let action = '';
                 if (host && id !== 'player1') {
                     if (!p) action = `<button type="button" class="btn btn-small" data-add-ai="${id}">Ajouter une IA</button>`;
@@ -3859,6 +4019,7 @@
         // le nœud `games/solo_xxx` précédent dans la base indéfiniment (le
         // redémarrage dans le même onglet ne déclenche pas onDisconnect()).
         function cleanupCurrentGame() {
+            pausedAt = 0;
             if (gameState.roomId) {
                 database.ref(`games/${gameState.roomId}`).off();
                 database.ref(`games/${gameState.roomId}`).remove();
@@ -3879,10 +4040,10 @@
 
         function soloInfoText() {
             const level = aiSettings().label.toLowerCase();
-            const me = nameOf(gameState.playerId).toLowerCase();
-            if (teamMode()) return `Partie solo en équipes : vous et une IA contre deux IA (${level}) - Vous êtes le ${me}`;
+            const me = youAreText(gameState.playerId);
+            if (teamMode()) return `Partie solo en équipes : vous et une IA contre deux IA (${level}) - ${me}`;
             const n = aiIds().length || aiCount;
-            return `Partie solo contre ${n > 1 ? n + ' IA' : "l'IA"} (${level}) - Vous êtes le ${me}`;
+            return `Partie solo contre ${n > 1 ? n + ' IA' : "l'IA"} (${level}) - ${me}`;
         }
 
         // Créer une partie solo contre aiCount IA (places 2, 3, 4 : une
@@ -3944,7 +4105,9 @@
             if (alone) {
                 gameRef.onDisconnect().remove();
             } else {
-                gameRef.child(`players/${playerId}`).onDisconnect().remove();
+                // marqué déconnecté (heure serveur) : il peut revenir, l'hôte le
+                // retire après le délai de grâce (presenceTick)
+                gameRef.child(`players/${playerId}/offline`).onDisconnect().set(firebase.database.ServerValue.TIMESTAMP);
             }
         }
 
@@ -3956,11 +4119,21 @@
         function joinGame(roomId, playerId, alone = true) {
             log(`Rejoindre la partie ${roomId} en tant que ${playerId}`);
             const gameRef = database.ref(`games/${roomId}`);
+            if (!soloMode) {
+                // de retour (ou premier passage) : plus « déconnecté » ; mémorisé
+                // pour pouvoir reprendre la partie après un rechargement
+                gameRef.child(`players/${playerId}/offline`).remove();
+                saveSession(roomId, playerId);
+                startAI(); // ne fait rien tant qu'on n'est pas l'hôte
+            }
             
             // Écouter les changements d'état du jeu
             gameRef.on('value', (snapshot) => {
                 const gameData = snapshot.val();
-                if (!gameData) return;
+                if (!gameData) {
+                    if (gameState.roomId === roomId && !soloMode) clearSavedSession();
+                    return;
+                }
 
                 // Manche : un nouveau numéro de manche = nouvelle carte et
                 // joueurs replacés à leur coin. On jette alors l'état local de
@@ -4011,7 +4184,7 @@
                 gameState.players = newPlayers;
 
                 // Suis-je le seul humain encore présent ? (solo = toujours seul)
-                const humans = Object.keys(newPlayers).filter(id => !newPlayers[id].ai);
+                const humans = Object.keys(newPlayers).filter(id => !newPlayers[id].ai && !newPlayers[id].offline);
                 lastKnownAlone = soloMode || humans.length <= 1;
                 applyDisconnectPolicy(gameRef, playerId, lastKnownAlone);
 
@@ -4052,7 +4225,7 @@
                 const m = gameState.match;
                 if (gameState.gameStarted && m && !m.roundOver && !m.matchWinner && newPlayers.player1) {
                     gameInfo.textContent = soloMode ? soloInfoText()
-                        : `Partie en ligne - Vous êtes le ${nameOf(playerId).toLowerCase()}`;
+                        : `Partie en ligne - ${youAreText(playerId)}`;
                 }
 
                 renderLobby(gameData);
@@ -4083,19 +4256,103 @@
             document.getElementById('gameControls').style.display = 'none';
         }
 
+        //--------------------------------------------------
+        // PRÉSENCE : relais d'hôte, déconnectés, reprise de partie
+        //--------------------------------------------------
+        const LOBBY_OFFLINE_GRACE = 3000; // salle d'attente : place libérée vite
+        function presenceTick() {
+            const m = gameState.match;
+            if (!gameState.roomId || soloMode || !m || !gameState.playerId) return;
+            const players = gameState.players;
+            const online = id => players[id] && !players[id].offline;
+
+            // Relais : l'hôte est absent → le premier humain présent le remplace
+            // (tous les onglets font le même choix, seul l'élu écrit)
+            if (!online(hostId())) {
+                const next = PLAYER_IDS.find(id => online(id) && !players[id].ai);
+                if (next && next === gameState.playerId) {
+                    log(`Relais : ${next} devient l'hôte (${hostId()} absent)`);
+                    m.host = next;
+                    database.ref(`games/${gameState.roomId}/match/host`).set(next);
+                    startAI();
+                    // manche finie mais la suivante n'a pas été lancée par l'ancien hôte
+                    if (m.roundOver && !m.matchWinner) {
+                        const roomId = gameState.roomId;
+                        setTimeout(() => { if (gameState.roomId === roomId && isHost()) startRound(false); }, ROUND_PAUSE);
+                    }
+                }
+            }
+
+            // Hôte : retire les déconnectés qui ne sont pas revenus à temps
+            if (isHost()) {
+                const grace = gameState.gameStarted ? (m.offlineGrace || 60000) : LOBBY_OFFLINE_GRACE;
+                for (const id of PLAYER_IDS) {
+                    const p = players[id];
+                    if (!p || typeof p.offline !== 'number' || serverNow() - p.offline < grace) continue;
+                    log(`${id} retiré : pas revenu depuis ${Math.round((serverNow() - p.offline) / 1000)} s`);
+                    const upd = { [`players/${id}`]: null };
+                    if (!gameState.gameStarted) upd[`match/scores/${id}`] = null;
+                    database.ref(`games/${gameState.roomId}`).update(upd);
+                }
+            }
+        }
+        setInterval(presenceTick, 1000);
+
+        // Partie en ligne mémorisée pour la reprendre après un rechargement
+        const SESSION_KEY = 'islandBomber.session';
+        function saveSession(roomId, playerId) {
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify({ roomId, playerId, at: Date.now() })); } catch (e) { /* non bloquant */ }
+        }
+        function clearSavedSession() {
+            try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* non bloquant */ }
+        }
+        function checkSavedSession() {
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { /* rien */ }
+            if (!saved || !saved.roomId || !PLAYER_SLOTS[saved.playerId] || Date.now() - saved.at > 3 * 3600 * 1000) return;
+            database.ref(`games/${saved.roomId}/players/${saved.playerId}`).once('value', snap => {
+                if (!snap.exists() || gameState.roomId) {
+                    if (!snap.exists()) clearSavedSession();
+                    return;
+                }
+                document.getElementById('resumeCode').textContent = saved.roomId;
+                document.getElementById('resumeBox').style.display = '';
+                document.getElementById('resumeBtn').onclick = () => resumeSavedGame(saved.roomId, saved.playerId);
+            });
+        }
+        function resumeSavedGame(roomId, playerId) {
+            document.getElementById('resumeBox').style.display = 'none';
+            cleanupLocalOnly();
+            gameState.roomId = roomId;
+            gameState.playerId = playerId;
+            soloMode = false;
+            roomInput.value = roomId;
+            joinGame(roomId, playerId, false);
+            gameInfo.textContent = `De retour dans la partie ${roomId}`;
+        }
+        // Remise à zéro locale sans toucher à la base (reprise d'une partie)
+        function cleanupLocalOnly() {
+            pausedAt = 0;
+            gameState.players = {};
+            for (const id in aiBrains) delete aiBrains[id];
+            gameState.gameStarted = false;
+            gameState.match = null;
+            lastRoundKey = null;
+        }
+
         // Fonction pour redémarrer la partie
         function restartGame() {
             log("Redémarrage de la partie");
             if (soloMode) {
                 // Solo : nouvelle salle, même nombre d'IA
                 createSinglePlayerGame();
-            } else if (gameState.match && gameState.match.matchWinner && gameState.players.player1 &&
-                       presentIds().length >= 2) {
+            } else if (gameState.match && gameState.match.matchWinner && presentIds().length >= 2) {
                 // Multijoueur, adversaires toujours là : revanche dans la même
                 // salle (nouveau match, scores remis à zéro)
                 startRound(true);
             } else {
-                // Adversaires ou hôte partis : revenir à l'écran de création de partie
+                // Adversaires partis : revenir à l'écran de création de partie
+                clearSavedSession();
                 document.getElementById('roomControls').style.display = 'block';
                 document.getElementById('gameControls').style.display = 'none';
                 stopAI();
@@ -4134,6 +4391,13 @@
 
         // Gérer les entrées clavier
         window.addEventListener('keydown', (e) => {
+            // P ou Échap : pause (solo)
+            if ((e.key === 'p' || e.key === 'P' || e.key === 'Escape') && !e.repeat &&
+                document.activeElement !== roomInput && document.activeElement !== nameInput) {
+                togglePause();
+                return;
+            }
+            if (isPaused()) return;
             gameState.keys[e.key] = true;
             
             // Touche espace pour poser une bombe
@@ -4502,7 +4766,7 @@
                 const p = gameState.players[id];
                 const score = gameState.match && gameState.match.scores ? gameState.match.scores[id] : 0;
                 const malus = p.malus && Date.now() < (p.malusUntil || 0) ? p.malus : '';
-                return [id, nameOf(id), p.character, p.suit, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
+                return [id, nameOf(id), p.character, p.suit, p.alive, !!p.offline, p.maxBombs, p.bombRange, p.speedMultiplier, score,
                         p.canKick, p.hasDetonator, p.pierce, malus].join(':');
             }).join('|') + (spritesReady() ? 's' : '');
             if (key !== lastHudKey) {
@@ -4511,16 +4775,17 @@
                     const p = gameState.players[id];
                     const label = { name: nameOf(id), accent: SUIT_COLORS[suitOf(id)].css };
                     const speed = Math.round(((p.speedMultiplier || 1) - 1) / 0.2);
-                    const tags = [id === gameState.playerId ? 'vous' : '', teamMode() ? teamName(TEAM_OF[id]) : ''].filter(Boolean);
+                    const tags = [id === gameState.playerId ? 'vous' : '', p.offline ? 'déconnecté' : '',
+                        teamMode() ? teamName(TEAM_OF[id]) : ''].filter(Boolean);
                     const you = `<small>${tags.join(' · ') || '&nbsp;'}</small>`;
                     const m = gameState.match;
                     const won = m && m.scores ? (m.scores[id] || 0) : 0;
                     const need = m ? m.roundsToWin : DEFAULT_ROUNDS_TO_WIN;
                     const pips = Array.from({ length: need }, (_, i) =>
                         `<span class="pip${i < won ? ' won' : ''}"></span>`).join('');
-                    return `<div class="player-card${p.alive ? '' : ' dead'}" style="--accent:${label.accent}">
+                    return `<div class="player-card${p.alive && !p.offline ? '' : ' dead'}" style="--accent:${label.accent}">
                         <span class="portrait sprite" style="${portraitCss(lookOf(id), 52)}"></span>
-                        <div class="name">${label.name}${you}<span class="pips" title="Manches gagnées : ${won}">${pips}</span></div>
+                        <div class="name">${escapeHtml(label.name)}${you}<span class="pips" title="Manches gagnées : ${won}">${pips}</span></div>
                         <div class="stats">
                             <span class="stat" title="Bombes"><i class="sprite" style="${spriteCss('bonus_bomb', 20)}"></i>${p.maxBombs}</span>
                             <span class="stat" title="Portée"><i class="sprite" style="${spriteCss('bonus_power', 20)}"></i>${p.bombRange}</span>
@@ -4535,7 +4800,9 @@
             const bar = document.getElementById('roundBar');
             const m = gameState.match;
             let barText = '';
-            if (m && gameState.gameStarted && !m.matchWinner && gameState.roomId) {
+            if (isPaused()) {
+                // barre figée pendant la pause
+            } else if (m && gameState.gameStarted && !m.matchWinner && gameState.roomId) {
                 const ts = tideStart();
                 const left = ts - serverNow();
                 let tide = '';
@@ -4547,8 +4814,10 @@
                 barText = `Manche ${m.round} · ${THEMES[currentTheme()].label} · premier à ${m.roundsToWin}` + (tide ? ` · ${tide}` : '');
                 bar.classList.toggle('tide', ts !== Infinity && left <= 10000);
             }
-            if (bar.textContent !== barText) bar.textContent = barText;
-            bar.hidden = !barText;
+            if (!isPaused()) {
+                if (bar.textContent !== barText) bar.textContent = barText;
+                bar.hidden = !barText;
+            }
 
             // Écran de fin : titre et texte tirés du message de gameInfo
             // (« Victoire - … », « Défaite - … », « L'adversaire a quitté… »)
@@ -4578,8 +4847,23 @@
             render();
             updateHud();
             updateTouchControls();
+            updatePauseButton();
             requestAnimationFrame(gameLoop);
         }
+
+        // Bouton pause (solo, partie en cours) ; pause automatique quand
+        // l'onglet passe en arrière-plan
+        const pauseBtn = document.getElementById('pauseBtn');
+        pauseBtn.addEventListener('click', () => { togglePause(); pauseBtn.blur(); });
+        function updatePauseButton() {
+            const show = canPause() ? '' : 'none';
+            if (pauseBtn.style.display !== show) pauseBtn.style.display = show;
+            const label = isPaused() ? 'Reprendre' : 'Pause';
+            if (pauseBtn.textContent !== label) pauseBtn.textContent = label;
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && canPause() && !isPaused()) togglePause();
+        });
 
         // Boutons son et niveau (après la déclaration de leur état plus haut)
         // Bouton son
@@ -4640,6 +4924,12 @@
                 `title="Maillot ${SUIT_COLORS[c].word}" aria-label="Maillot ${SUIT_COLORS[c].word}" ` +
                 `style="background:${SUIT_COLORS[c].css}"></button>`).join('');
         }
+        const nameInput = document.getElementById('nameInput');
+        nameInput.value = myName;
+        nameInput.addEventListener('input', () => {
+            myName = cleanName(nameInput.value);
+            try { localStorage.setItem('islandBomber.name', myName); } catch (err) { /* non bloquant */ }
+        });
         document.getElementById('suitButtons').addEventListener('click', e => {
             const b = e.target.closest('[data-suit]');
             if (!b) return;
@@ -4661,7 +4951,8 @@
         document.querySelectorAll('#roomControls [data-setting]').forEach(group => {
             const key = group.dataset.setting;
             const buttons = group.querySelectorAll('[data-value]');
-            const parse = v => (['bonusRate', 'map', 'mode'].includes(key) ? v : Number(v));
+            const parse = v => (key === 'friendlyFire' ? v === 'oui'
+                : ['bonusRate', 'map', 'mode'].includes(key) ? v : Number(v));
             const show = () => {
                 buttons.forEach(b =>
                     b.setAttribute('aria-checked', String(parse(b.dataset.value) === gameSettings[key])));
@@ -4745,7 +5036,7 @@
         touchBomb.addEventListener('pointerdown', e => {
             e.preventDefault();
             unlockAudio();
-            if (!gameState.gameStarted) return;
+            if (!gameState.gameStarted || isPaused()) return;
             placeBomb();
             if (navigator.vibrate) navigator.vibrate(15);
         });
@@ -4753,7 +5044,7 @@
         touchDetonate.addEventListener('pointerdown', e => {
             e.preventDefault();
             const me = gameState.players[gameState.playerId];
-            if (gameState.gameStarted && me && me.alive && !countdownActive()) detonateRemoteBombs();
+            if (gameState.gameStarted && me && me.alive && !countdownActive() && !isPaused()) detonateRemoteBombs();
         });
         // Icône de bombe (atlas) et bouton détonateur selon le bonus ramassé
         function updateTouchControls() {
@@ -4764,6 +5055,8 @@
             const show = me && me.alive && me.hasDetonator ? '' : 'none';
             if (touchDetonate.style.display !== show) touchDetonate.style.display = show;
         }
+
+        checkSavedSession();
 
         // Démarrer le jeu
         log("Démarrage de la boucle de jeu");

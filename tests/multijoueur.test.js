@@ -82,6 +82,7 @@ const gridOf = (page, id) => page.evaluate(id => {
         await B.page.click('#joinBtn');
         // Salle d'attente : l'hôte lance quand B est arrivé
         await A.page.waitForFunction(() => gameState.players.player2 && !document.getElementById('launchBtn').disabled, { timeout: 10000 });
+        await B.page.waitForFunction(() => document.getElementById('lobbyHint').textContent !== '', { timeout: 10000 });
         const lobbyB = await B.page.$eval('#lobbyHint', e => e.textContent);
         check('Salle d’attente : B attend le lancement par l’hôte', lobbyB.includes('attente'), `B="${lobbyB}"`);
         await A.page.click('#launchBtn');
@@ -258,6 +259,7 @@ const gridOf = (page, id) => page.evaluate(id => {
     }
 
     await scenarioDeconnexion();
+    await scenarioReconnexion();
     await scenarioQuatreJoueurs();
     await scenarioSolo();
     await scenarioSoloTroisIA();
@@ -265,6 +267,7 @@ const gridOf = (page, id) => page.evaluate(id => {
     await scenarioCartes();
     await scenarioEquipes();
     await scenarioTactile();
+    await scenarioPauseEtTirsAmis();
     await scenarioMaree();
     await scenarioPouvoirs();
 
@@ -445,7 +448,7 @@ async function scenarioSolo() {
 // prévenu ; quand le dernier part, la partie doit disparaître de Firebase.
 async function scenarioDeconnexion() {
     const room = ROOM + '_deco';
-    const A = await openPlayer('A2(player1)');
+    const A = await openPlayer('A2(player1)', '?grace=3');
     const B = await openPlayer('B2(player2)');
     let observer = null;
     try {
@@ -459,7 +462,11 @@ async function scenarioDeconnexion() {
         await A.page.waitForFunction(() => gameState.gameStarted && gameState.players.player2, { timeout: 10000 });
 
         await B.browser.close(); // B ferme brutalement sa page
-        await A.page.waitForFunction(() => !gameState.players.player2, { timeout: 10000 })
+        await A.page.waitForFunction(() => gameState.players.player2 && gameState.players.player2.offline, { timeout: 15000 });
+        await sleep(300);
+        const waitingA = await A.page.$eval('#gameInfo', e => e.textContent);
+        check('A voit B déconnecté et attend son retour', waitingA.includes('déconnecté'), `A="${waitingA}"`);
+        await A.page.waitForFunction(() => !gameState.players.player2, { timeout: 15000 })
             .then(() => check('Départ de B détecté chez A', true))
             .catch(() => check('Départ de B détecté chez A', false, 'player2 toujours présent après 10s'));
 
@@ -497,7 +504,7 @@ async function scenarioDeconnexion() {
 // par l'hôte dans la salle d'attente, simulée par l'onglet de l'hôte.
 async function scenarioQuatreJoueurs() {
     const room = ROOM + '_4j';
-    const A = await openPlayer('A4(player1)', '?manches=2&maree=600');
+    const A = await openPlayer('A4(player1)', '?manches=2&maree=600&grace=2');
     const B = await openPlayer('B4(player2)');
     const C = await openPlayer('C4(player3)');
     const all = [A, B, C];
@@ -563,7 +570,7 @@ async function scenarioQuatreJoueurs() {
 
         // C quitte en pleine manche : la partie continue pour les autres
         await C.browser.close();
-        await A.page.waitForFunction(() => !gameState.players.player3, { timeout: 10000 });
+        await A.page.waitForFunction(() => !gameState.players.player3, { timeout: 15000 });
         await sleep(300);
         const afterLeave = await Promise.all([A, B].map(P => P.page.$eval('#gameInfo', e => e.textContent)));
         check('4 joueurs : le départ de C ne termine pas la partie', afterLeave.every(t => !t.includes('quitté')), afterLeave.join(' / '));
@@ -668,6 +675,7 @@ async function scenarioReglages() {
     try {
         const menuOnly = await P.page.evaluate(() => getComputedStyle(document.querySelector('.arena')).display === 'none');
         check('Menu : pas d’île vide sous le choix de partie', menuOnly);
+        await P.page.type('#nameInput', 'Paulo');
         await P.page.click('[data-setting="roundsToWin"] [data-value="1"]');
         await P.page.click('[data-setting="bonusRate"] [data-value="beaucoup"]');
         await P.page.click('[data-bonus="6"]'); // pas de noix pourrie
@@ -679,6 +687,10 @@ async function scenarioReglages() {
             arena: getComputedStyle(document.querySelector('.arena')).display !== 'none' }));
         check('Réglages recopiés dans le match', m.r === 1 && m.rate === 0.8 && m.types === '0,1,3,4,5', JSON.stringify(m));
         check('Partie lancée : le plateau réapparaît', m.arena);
+        const pseudo = await P.page.evaluate(() => ({ card: document.querySelector('#hud .player-card .name').firstChild.textContent.trim(),
+            info: document.getElementById('gameInfo').textContent, stored: gameState.players.player1.name }));
+        check('Pseudo : sur la fiche et dans le message', pseudo.card === 'Paulo' && pseudo.info.includes('Vous êtes Paulo') && pseudo.stored === 'Paulo',
+            JSON.stringify(pseudo));
         const drawn = await P.page.evaluate(async () => {
             for (let i = 0; i < 40; i++) spawnBonus(i % 15, 7);
             await new Promise(r => setTimeout(r, 300));
@@ -919,5 +931,131 @@ async function scenarioTactile() {
         check('Aucune erreur JS (tactile)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
         if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
         await P.browser.close();
+    }
+}
+
+// Pause en solo (tout est figé puis décalé) ; tirs amis désactivés en
+// équipes (la bombe d'un coéquipier ne blesse pas).
+async function scenarioPauseEtTirsAmis() {
+    const P = await openPlayer('Pause', '?maree=600');
+    let room = null;
+    try {
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+        await P.page.evaluate(() => stopAI());
+        await P.page.keyboard.press(' ');
+        await P.page.waitForFunction(() => gameState.bombs.length === 1, { timeout: 2000 });
+        const start = await P.page.evaluate(() => gameState.match.roundStart);
+        await P.page.keyboard.press('p');
+        await sleep(4000);
+        const during = await P.page.evaluate(() => ({ bombs: gameState.bombs.length, paused: isPaused(),
+            btn: document.getElementById('pauseBtn').textContent }));
+        check('Pause : la bombe n’explose pas pendant la pause', during.bombs === 1 && during.paused && during.btn === 'Reprendre',
+            JSON.stringify(during));
+        await P.page.keyboard.press('p');
+        await sleep(300);
+        const shifted = await P.page.evaluate(s => gameState.match.roundStart - s, start);
+        check('Pause : la marée est décalée de la durée de la pause', shifted >= 3800 && shifted <= 5000, `${shifted} ms`);
+        await P.page.waitForFunction(() => gameState.bombs.length === 0, { timeout: 5000 })
+            .then(() => check('Pause : la bombe explose après la reprise', true))
+            .catch(() => check('Pause : la bombe explose après la reprise', false));
+    } catch (e) {
+        check('Déroulement du scénario pause', false, e.message);
+    } finally {
+        check('Aucune erreur JS (pause)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
+
+    const T = await openPlayer('Tirs amis', '?maree=600&mode=equipes');
+    room = null;
+    try {
+        await T.page.click('[data-setting="friendlyFire"] [data-value="non"]');
+        await T.page.click('#singlePlayerBtn');
+        await T.page.waitForFunction(() => gameState.gameStarted && Object.keys(gameState.players).length === 4, { timeout: 10000 });
+        room = await T.page.evaluate(() => gameState.roomId);
+        await T.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+        // bombe du joueur en (1,0), coéquipière (IA, player3) posée juste à côté,
+        // le joueur à l'abri : seule la coéquipière est dans les flammes
+        await T.page.evaluate(() => {
+            stopAI();
+            const place = (id, x, y) => {
+                const p = gameState.players[id];
+                const px = x * TILE_SIZE + TILE_SIZE / 2, py = y * TILE_SIZE + TILE_SIZE / 2;
+                Object.assign(p, { x: px, y: py, fromX: px, fromY: py, toX: px, toY: py, moving: false });
+            };
+            gameState.map[0][1] = TILE_TYPES.EMPTY;
+            gameState.map[0][2] = TILE_TYPES.EMPTY;
+            place('player1', 1, 0);
+            placeBomb();
+            place('player1', 7, 7);
+            gameState.map[7][7] = TILE_TYPES.EMPTY;
+            place('player3', 2, 0);
+        });
+        await T.page.waitForFunction(() => gameState.explosions.length > 0, { timeout: 5000 });
+        await sleep(600);
+        const alive = await T.page.evaluate(() => ({ ff: gameState.match.friendlyFire, mate: gameState.players.player3.alive }));
+        check('Tirs amis désactivés : la bombe d’un coéquipier ne tue pas', alive.ff === false && alive.mate === true, JSON.stringify(alive));
+    } catch (e) {
+        check('Déroulement du scénario tirs amis', false, e.message);
+    } finally {
+        check('Aucune erreur JS (tirs amis)', T.errors.length === 0, T.errors.slice(0, 3).join(' | '));
+        if (room) await T.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await T.browser.close();
+    }
+}
+
+// Reconnexion et relais d'hôte : B recharge sa page et reprend sa place ;
+// puis l'hôte A part, B prend le relais et juge la manche.
+async function scenarioReconnexion() {
+    const room = ROOM + '_reco';
+    const A = await openPlayer('A5(hôte)', '?maree=600&grace=30');
+    const B = await openPlayer('B5');
+    const C = await openPlayer('C5');
+    try {
+        await A.page.type('#roomInput', room);
+        await A.page.click('#createBtn');
+        await A.page.waitForFunction(() => gameState.players.player1, { timeout: 10000 });
+        for (const P of [B, C]) {
+            await P.page.type('#roomInput', room);
+            await P.page.click('#joinBtn');
+            await P.page.waitForFunction(() => gameState.playerId && gameState.players[gameState.playerId], { timeout: 10000 });
+        }
+        await A.page.waitForFunction(() => Object.keys(gameState.players).length === 3 && !document.getElementById('launchBtn').disabled, { timeout: 10000 });
+        await A.page.click('#launchBtn');
+        await Promise.all([A, B, C].map(P => P.page.waitForFunction(() => gameState.gameStarted && !countdownActive(), { timeout: 12000 })));
+
+        // B recharge sa page
+        await B.page.reload({ waitUntil: 'networkidle2' });
+        await A.page.waitForFunction(() => gameState.players.player2 && gameState.players.player2.offline, { timeout: 15000 })
+            .then(() => check('Reconnexion : A voit B déconnecté', true))
+            .catch(() => check('Reconnexion : A voit B déconnecté', false));
+        const stillOn = await A.page.evaluate(() => !document.getElementById('gameControls').style.display.includes('block'));
+        check('Reconnexion : à 3, la partie continue sans lui', stillOn);
+        await B.page.waitForSelector('#resumeBtn', { visible: true, timeout: 10000 });
+        await B.page.click('#resumeBtn');
+        await B.page.waitForFunction(() => gameState.playerId === 'player2' && gameState.gameStarted &&
+            gameState.players.player2 && !gameState.players.player2.offline, { timeout: 10000 });
+        await A.page.waitForFunction(() => gameState.players.player2 && !gameState.players.player2.offline, { timeout: 10000 })
+            .then(() => check('Reconnexion : B reprend sa place (vu par A)', true))
+            .catch(() => check('Reconnexion : B reprend sa place (vu par A)', false));
+
+        // L'hôte A part : B (première place humaine présente) prend le relais
+        await A.browser.close();
+        await C.page.waitForFunction(() => gameState.match.host === 'player2', { timeout: 20000 })
+            .then(() => check('Relais : B devient l’hôte quand A part', true))
+            .catch(() => check('Relais : B devient l’hôte quand A part', false));
+        await C.page.evaluate(() => database.ref(`games/${gameState.roomId}/players/player3/alive`).set(false));
+        await B.page.waitForFunction(() => gameState.match.roundOver, { timeout: 8000 });
+        const winner = await B.page.evaluate(() => gameState.match.lastWinner);
+        check('Relais : le nouvel hôte juge la manche', winner === 'player2', `gagnant=${winner}`);
+    } catch (e) {
+        check('Déroulement du scénario reconnexion', false, e.message);
+    } finally {
+        for (const P of [A, B, C]) check(`Aucune erreur JS chez ${P.label}`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        await B.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        for (const P of [A, B, C]) await P.browser.close().catch(() => {});
     }
 }
