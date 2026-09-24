@@ -2,6 +2,9 @@
   "name": "bomberman-tests",
   "private": true,
   "description": "Test multijoueur : deux Chrome headless jouent une vraie partie sur Firebase (salle de test supprimée à la fin)",
-  "scripts": { "test": "node multijoueur.test.js" },
+  "scripts": {
+    "test": "node multijoueur.test.js",
+    "test:local": "node -e \"process.env.FIREBASE_MOCK='1'; require('./multijoueur.test.js')\""
+  },
   "devDependencies": { "puppeteer-core": "^23.0.0" }
 }

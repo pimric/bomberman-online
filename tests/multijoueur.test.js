@@ -1,12 +1,15 @@
-// Test multijoueur automatique : deux Chrome headless (un par joueur) jouent
+// Test multijoueur automatique : des Chrome headless (un par joueur) jouent
 // une partie réelle sur la base Firebase, dans une salle de test supprimée à la fin.
+// FIREBASE_MOCK=1 (npm run test:local) : base simulée en mémoire (tests/mock),
+// pour les machines sans accès à Firebase. CHROME=<chemin> : autre navigateur.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 
 const GAME_DIR = path.join(__dirname, '..');
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const hub = process.env.FIREBASE_MOCK === '1' ? require('./mock/hub').createHub() : null;
 const PORT = 8765;
 const ROOM = 'mptest_' + Date.now();
 const TILE = 32; // TILE_SIZE du jeu
@@ -30,6 +33,7 @@ const server = http.createServer((req, res) => {
 async function openPlayer(label, query = '') {
     const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
+    if (hub) await hub.attach(page, browser);
     const errors = [];
     const logs = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -61,6 +65,11 @@ const gridOf = (page, id) => page.evaluate(id => {
 
         await B.page.type('#roomInput', ROOM);
         await B.page.click('#joinBtn');
+        // Salle d'attente : l'hôte lance quand B est arrivé
+        await A.page.waitForFunction(() => gameState.players.player2 && !document.getElementById('launchBtn').disabled, { timeout: 10000 });
+        const lobbyB = await B.page.$eval('#lobbyHint', e => e.textContent);
+        check('Salle d’attente : B attend le lancement par l’hôte', lobbyB.includes('attente'), `B="${lobbyB}"`);
+        await A.page.click('#launchBtn');
         await Promise.all([A, B].map(P => P.page.waitForFunction(
             () => gameState.gameStarted === true && gameState.players.player1 && gameState.players.player2,
             { timeout: 10000 })));
@@ -234,7 +243,9 @@ const gridOf = (page, id) => page.evaluate(id => {
     }
 
     await scenarioDeconnexion();
+    await scenarioQuatreJoueurs();
     await scenarioSolo();
+    await scenarioSoloTroisIA();
     await scenarioMaree();
     await scenarioPouvoirs();
 
@@ -379,14 +390,14 @@ async function scenarioSolo() {
     let room = null;
     try {
         await P.page.click('#singlePlayerBtn');
-        await P.page.waitForFunction(() => gameState.gameStarted && gameState.players[aiPlayerId], { timeout: 10000 });
+        await P.page.waitForFunction(() => gameState.gameStarted && gameState.players.player2, { timeout: 10000 });
         await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
         room = await P.page.evaluate(() => gameState.roomId);
-        const start = await gridOf(P.page, 'playerAI');
+        const start = await gridOf(P.page, 'player2');
         await P.page.evaluate(() => {
             window.__aiBombs = 0;
             database.ref(`games/${gameState.roomId}/bombs`).on('child_added', s => {
-                if (s.val().playerId === aiPlayerId) window.__aiBombs++;
+                if (s.val().playerId === 'player2') window.__aiBombs++;
             });
         });
         // Cases visitées (pas seulement départ/arrivée : dans son coin, l'IA
@@ -394,7 +405,7 @@ async function scenarioSolo() {
         const visited = new Set([`${start.x},${start.y}`]);
         for (let i = 0; i < 40; i++) {
             await sleep(200);
-            const g = await gridOf(P.page, 'playerAI');
+            const g = await gridOf(P.page, 'player2');
             if (g) visited.add(`${g.x},${g.y}`);
         }
         const bombs = await P.page.evaluate(() => window.__aiBombs);
@@ -424,6 +435,8 @@ async function scenarioDeconnexion() {
         await A.page.waitForFunction(() => gameState.players.player1, { timeout: 10000 });
         await B.page.type('#roomInput', room);
         await B.page.click('#joinBtn');
+        await A.page.waitForFunction(() => gameState.players.player2 && !document.getElementById('launchBtn').disabled, { timeout: 10000 });
+        await A.page.click('#launchBtn');
         await A.page.waitForFunction(() => gameState.gameStarted && gameState.players.player2, { timeout: 10000 });
 
         await B.browser.close(); // B ferme brutalement sa page
@@ -458,5 +471,154 @@ async function scenarioDeconnexion() {
         const cleaner = observer || await openPlayer('nettoyage');
         await cleaner.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
         for (const P of [A, B, cleaner]) await P.browser.close().catch(() => {});
+    }
+}
+
+// Partie à 4 : trois humains (3 navigateurs) + une IA bouche-trou ajoutée
+// par l'hôte dans la salle d'attente, simulée par l'onglet de l'hôte.
+async function scenarioQuatreJoueurs() {
+    const room = ROOM + '_4j';
+    const A = await openPlayer('A4(player1)', '?manches=2&maree=600');
+    const B = await openPlayer('B4(player2)');
+    const C = await openPlayer('C4(player3)');
+    const all = [A, B, C];
+    try {
+        await A.page.type('#roomInput', room);
+        await A.page.click('#createBtn');
+        await A.page.waitForFunction(() => gameState.players.player1, { timeout: 10000 });
+        for (const P of [B, C]) {
+            await P.page.type('#roomInput', room);
+            await P.page.click('#joinBtn');
+            await P.page.waitForFunction(() => gameState.playerId && gameState.players[gameState.playerId], { timeout: 10000 });
+        }
+        const ids = await Promise.all([B, C].map(P => P.page.evaluate(() => gameState.playerId)));
+        check('4 joueurs : B et C prennent les places 2 et 3', ids[0] === 'player2' && ids[1] === 'player3', ids.join(','));
+
+        // L'hôte complète la dernière place avec une IA
+        await A.page.waitForSelector('[data-add-ai="player4"]', { timeout: 5000 });
+        await A.page.click('[data-add-ai="player4"]');
+        await C.page.waitForFunction(() => document.querySelectorAll('#lobbySlots li:not(.free)').length === 4, { timeout: 5000 })
+            .then(() => check('4 joueurs : salle d’attente pleine vue par C', true))
+            .catch(() => check('4 joueurs : salle d’attente pleine vue par C', false));
+        const guestButtons = await B.page.evaluate(() => !!document.querySelector('[data-add-ai]') ||
+            document.getElementById('launchBtn').offsetParent !== null);
+        const hostLaunch = await A.page.evaluate(() => document.getElementById('launchBtn').offsetParent !== null);
+        check('4 joueurs : seul l’hôte gère les IA et le lancement', !guestButtons && hostLaunch);
+
+        await A.page.click('#launchBtn');
+        await Promise.all(all.map(P => P.page.waitForFunction(
+            () => gameState.gameStarted && ['player1', 'player2', 'player3', 'player4'].every(id => gameState.players[id]),
+            { timeout: 10000 })));
+        const views = await Promise.all(all.map(P => P.page.evaluate(() => ['player1', 'player2', 'player3', 'player4'].map(id => {
+            const p = gameState.players[id];
+            return `${Math.floor(p.x / TILE_SIZE)},${Math.floor(p.y / TILE_SIZE)}${p.ai ? ':IA' : ''}`;
+        }).join(' '))));
+        const expected = '0,0 14,14 14,0 0,14:IA';
+        check('4 joueurs : les 4 coins, vus pareil par les 3 onglets', views.every(v => v === expected), views.join(' / '));
+        const corners = await A.page.evaluate(() => Object.values(PLAYER_SLOTS).map(s => gameState.map[s.y][s.x]).join(','));
+        check('4 joueurs : les 4 coins de départ sont du sable', corners === '0,0,0,0', corners);
+        const cards = await C.page.$$eval('#hud .player-card', els => els.map(e => e.querySelector('.name').firstChild.textContent.trim()));
+        check('4 joueurs : 4 fiches chez C, la sienne en premier', cards.length === 4 && cards[0] === 'Joueur vert' && cards.includes("L'IA"),
+            cards.join(', '));
+
+        await Promise.all(all.map(P => P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 })));
+
+        // L'IA de l'hôte bouge, et C la voit bouger
+        const seen = new Set();
+        for (let i = 0; i < 25; i++) {
+            const g = await gridOf(C.page, 'player4');
+            seen.add(`${g.x},${g.y}`);
+            await sleep(200);
+        }
+        check('4 joueurs : l’IA bouche-trou bouge (vue par C)', seen.size >= 2, [...seen].join(' '));
+        // On la fige pour la suite (elle pourrait tuer quelqu'un au hasard)
+        await A.page.evaluate(() => stopAI());
+
+        // B meurt : 3 survivants, la manche continue
+        await B.page.evaluate(() => database.ref(`games/${gameState.roomId}/players/player2/alive`).set(false));
+        await sleep(1200);
+        const stillOn = await A.page.evaluate(() => !gameState.match.roundOver);
+        check('4 joueurs : une mort sur 4 ne termine pas la manche', stillOn);
+
+        // C quitte en pleine manche : la partie continue pour les autres
+        await C.browser.close();
+        await A.page.waitForFunction(() => !gameState.players.player3, { timeout: 10000 });
+        await sleep(300);
+        const afterLeave = await Promise.all([A, B].map(P => P.page.$eval('#gameInfo', e => e.textContent)));
+        check('4 joueurs : le départ de C ne termine pas la partie', afterLeave.every(t => !t.includes('quitté')), afterLeave.join(' / '));
+
+        // L'IA meurt : A, seul survivant, gagne la manche
+        await A.page.evaluate(() => {
+            gameState.players.player4.alive = false;
+            return database.ref(`games/${gameState.roomId}/players/player4/alive`).set(false);
+        });
+        await A.page.waitForFunction(() => gameState.match.roundOver, { timeout: 5000 });
+        await sleep(300);
+        const infoA = await A.page.$eval('#gameInfo', e => e.textContent);
+        const infoB = await B.page.$eval('#gameInfo', e => e.textContent);
+        check('4 joueurs : fin de manche, le vainqueur est nommé',
+            infoA.startsWith('Manche gagnée') && infoB.includes('Le joueur rouge marque'), `A="${infoA}" / B="${infoB}"`);
+
+        // Manche 2 : C, parti, n'est pas replacé
+        await Promise.all([A, B].map(P => P.page.waitForFunction(
+            () => gameState.match.round === 2 && !gameState.match.roundOver, { timeout: 8000 })));
+        const r2 = await B.page.evaluate(() => ({ players: Object.keys(gameState.players).sort().join(','), scores: gameState.match.scores }));
+        check('4 joueurs : manche 2 sans le joueur parti', r2.players === 'player1,player2,player4' && r2.scores.player1 === 1 && !('player3' in r2.scores),
+            JSON.stringify(r2));
+    } catch (e) {
+        check('Déroulement du scénario 4 joueurs', false, e.message);
+    } finally {
+        for (const P of all) {
+            check(`Aucune erreur JS chez ${P.label}`, P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+            P.logs.forEach(l => console.log(`   [${P.label}] ${l}`));
+        }
+        await A.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        for (const P of all) await P.browser.close().catch(() => {});
+    }
+}
+
+// Solo contre 3 IA : 4 joueurs, les IA se battent aussi entre elles et
+// continuent quand le joueur humain est mort.
+async function scenarioSoloTroisIA() {
+    const P = await openPlayer('Solo 3 IA');
+    let room = null;
+    try {
+        await P.page.click('[data-ai-count="3"]');
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && Object.keys(gameState.players).length === 4, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        const ais = await P.page.evaluate(() => aiIds().sort().join(','));
+        check('Solo 3 IA : 3 IA dans les places 2 à 4', ais === 'player2,player3,player4', ais);
+        const info = await P.page.$eval('#gameInfo', e => e.textContent);
+        check('Solo 3 IA : message de partie', info.includes('contre 3 IA'), info);
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+
+        // Le joueur meurt tout de suite : les IA doivent continuer à jouer
+        await P.page.evaluate(() => {
+            gameState.players.player1.alive = false;
+            return database.ref(`games/${gameState.roomId}/players/player1/alive`).set(false);
+        });
+        // Cases visitées (pas seulement départ/arrivée : une IA sort de son
+        // coin, pose, et revient s'y abriter en moins de 3 s)
+        const visited = new Set();
+        for (let i = 0; i < 20; i++) {
+            const cells = await P.page.evaluate(() => aiIds().map(id =>
+                `${id}@${Math.floor(gameState.players[id].x / TILE_SIZE)},${Math.floor(gameState.players[id].y / TILE_SIZE)}`));
+            cells.forEach(c => visited.add(c));
+            await sleep(200);
+        }
+        const movedAis = new Set([...visited].map(c => c.split('@')[0])).size;
+        const cellCount = visited.size;
+        check('Solo 3 IA : les IA continuent après la mort du joueur', cellCount >= 5,
+            `${cellCount} cases (IA@case) visitées en 4 s par ${movedAis} IA`);
+        const hudCards = await P.page.$$eval('#hud .player-card', els => els.length);
+        check('Solo 3 IA : 4 fiches joueurs', hudCards === 4, `${hudCards}`);
+    } catch (e) {
+        check('Déroulement du scénario solo 3 IA', false, e.message);
+    } finally {
+        check('Aucune erreur JS (solo 3 IA)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        P.logs.slice(0, 6).forEach(l => console.log(`   [Solo 3 IA] ${l}`));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
     }
 }

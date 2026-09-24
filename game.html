@@ -231,7 +231,38 @@
             border-radius: 5px;
             text-align: left;
             font-size: 12px;
+            white-space: pre;
         }
+
+        /* Salle d'attente (multijoueur) */
+        #lobby { width: min(560px, 100%); text-align: center; }
+        #lobby h2 { margin: 0 0 12px; }
+        .lobby-slots {
+            list-style: none;
+            margin: 0 0 10px;
+            padding: 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .lobby-slots li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 52px;
+            padding: 6px 10px;
+            border-radius: 14px;
+            background: #fff;
+            border-left: 6px solid var(--accent);
+            font-weight: 800;
+            text-align: left;
+        }
+        .lobby-slots li.free { background: transparent; border: 2px dashed var(--sand-deep); border-left-width: 6px; border-left-color: var(--accent); color: var(--wood); }
+        .lobby-slots .portrait { width: 40px; height: 40px; flex: none; }
+        .lobby-slots .slot-name { flex: 1; min-width: 0; }
+        .lobby-slots .btn { white-space: nowrap; }
+        .lobby-hint { margin: 0 0 12px; font-weight: 700; color: var(--wood); }
+        @media (max-width: 500px) { .lobby-slots { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -249,18 +280,31 @@
         <section id="roomControls" class="card">
             <h2 class="card-title">Choisis ta partie</h2>
             <button id="singlePlayerBtn" class="btn btn-primary btn-big solo-btn">Jouer contre l'IA</button>
+            <div class="level-picker" role="radiogroup" aria-label="Nombre d'IA">
+                <span>Adversaires :</span>
+                <button type="button" role="radio" data-ai-count="1">1</button>
+                <button type="button" role="radio" data-ai-count="2">2</button>
+                <button type="button" role="radio" data-ai-count="3">3</button>
+            </div>
             <div class="level-picker" role="radiogroup" aria-label="Niveau de l'IA">
                 <span>Niveau :</span>
                 <button type="button" role="radio" data-level="facile">Facile</button>
                 <button type="button" role="radio" data-level="normal">Normal</button>
                 <button type="button" role="radio" data-level="difficile">Difficile</button>
             </div>
-            <div class="divider">ou entre amis</div>
+            <div class="divider">ou entre amis, jusqu'à 4</div>
             <div class="online-row">
                 <input type="text" id="roomInput" placeholder="Code de partie" autocomplete="off">
                 <button id="createBtn" class="btn">Créer</button>
                 <button id="joinBtn" class="btn btn-secondary">Rejoindre</button>
             </div>
+        </section>
+
+        <section id="lobby" class="card" hidden>
+            <h2 class="card-title">Salle <span id="lobbyCode"></span></h2>
+            <ul id="lobbySlots" class="lobby-slots"></ul>
+            <p id="lobbyHint" class="lobby-hint"></p>
+            <button id="launchBtn" class="btn btn-primary btn-big solo-btn" type="button" style="display: none;">Lancer la partie</button>
         </section>
 
         <div id="gameInfo">Bienvenue sur l'île !</div>
@@ -287,11 +331,7 @@
     </main>
 
     <!-- Panneau de debug (caché) -->
-    <div id="debug" style="display: none;">
-        <div>IA - Position: <span id="aiGridX">0</span>, <span id="aiGridY">0</span> | Bombes: <span id="aiBombs">1</span> | Puissance: <span id="aiPower">2</span></div>
-        <div>Joueur - Position: <span id="playerGridX">0</span>, <span id="playerGridY">0</span> | Bombes: <span id="playerBombs">1</span> | Puissance: <span id="playerPower">2</span></div>
-        <div>Action IA: <span id="aiAction">-</span></div>
-    </div>
+    <div id="debug" style="display: none;"></div>
 
     <!-- Import Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
@@ -366,8 +406,7 @@
         // On bouge localement à chaque frame, mais on ne synchronise le réseau
         // qu'à cet intervalle pour éviter un déplacement saccadé.
         const POSITION_SYNC_INTERVAL = 100;
-        let lastPositionSync = 0;
-        let lastAiPositionSync = 0;
+        const lastPositionSync = {}; // id d'entité -> dernier envoi (ms)
 
         // Lissage de l'affichage des joueurs distants (voir getDisplayPosition)
         const REMOTE_CATCHUP = 1.3;                 // vitesse d'affichage = vitesse de marche x 1.3
@@ -464,16 +503,26 @@
         };
         const FLOATING_TEXT_DURATION = 1200; // ms
 
-        // Variables de l'IA
-        let aiMode = false;
-        let aiPlayerId = 'playerAI';
+        // Variables de l'IA. Une IA est un joueur ordinaire (champ ai: true
+        // dans Firebase) occupant une place libre. Elle est simulée par
+        // l'onglet de l'hôte (player1) : en solo c'est le seul onglet, en
+        // multi l'hôte simule les IA bouche-trou.
+        let soloMode = false;
         let aiMoveInterval;
-        let aiLastMove = { dx: 0, dy: 0 };
-        // Repère de debug : dernières décisions de l'IA (case + action), vidées
-        // dans la console à la mort d'un joueur pour comprendre comment c'est arrivé
+        // Nombre d'IA en solo (menu, retenu dans le navigateur)
+        let aiCount = 1;
+        try {
+            const saved = parseInt(localStorage.getItem('islandBomber.aiCount'), 10);
+            if (saved >= 1 && saved <= 3) aiCount = saved;
+        } catch (e) { /* stockage indisponible : 1 IA */ }
+        // État de décision propre à chaque IA : dernier pas (anti aller-retour)
+        // et repère de debug (dernières décisions, case + action, vidées dans
+        // la console à la mort d'un joueur pour comprendre comment c'est arrivé)
         const AI_HISTORY_SIZE = 15;
-        let aiHistory = [];
-        let aiLastTargetUpdate = 0;
+        const aiBrains = {};
+        function aiBrain(id) {
+            return aiBrains[id] || (aiBrains[id] = { lastMove: { dx: 0, dy: 0 }, history: [] });
+        }
 
         // Références DOM
         log("Récupération des références DOM");
@@ -526,23 +575,22 @@
                 map.push(row);
             }
             
-            // Garantir des zones de départ vides pour les joueurs
-            // Pour le joueur 1 (coin supérieur gauche)
-            map[0][0] = TILE_TYPES.EMPTY;
-            map[0][1] = TILE_TYPES.EMPTY;
-            map[1][0] = TILE_TYPES.EMPTY;
-            
-            // Pour l'IA ou le joueur 2 (coin inférieur droit)
-            map[GRID_SIZE-1][GRID_SIZE-1] = TILE_TYPES.EMPTY;
-            map[GRID_SIZE-1][GRID_SIZE-2] = TILE_TYPES.EMPTY;
-            map[GRID_SIZE-2][GRID_SIZE-1] = TILE_TYPES.EMPTY;
-            
+            // Zones de départ : les 4 coins (et leurs 2 voisines) restent
+            // vides, même si la place n'est pas occupée (carte identique quel
+            // que soit le nombre de joueurs)
+            const inCorner = (x, y) =>
+                (x <= 1 || x >= GRID_SIZE - 2) && (y <= 1 || y >= GRID_SIZE - 2);
+            // Le coin lui-même est une case paire/paire (donc un palmier) :
+            // on le dégage, ses voisines sont déjà du sable
+            for (const slot of Object.values(PLAYER_SLOTS)) {
+                map[slot.y][slot.x] = TILE_TYPES.EMPTY;
+            }
+
             // Ajouter des briques destructibles de manière aléatoire (tonneaux)
             for (let y = 0; y < GRID_SIZE; y++) {
                 for (let x = 0; x < GRID_SIZE; x++) {
                     // Si c'est un emplacement vide (pas un palmier) et pas dans les zones de départ
-                    if (map[y][x] === TILE_TYPES.EMPTY && 
-                        !((x <= 1 && y <= 1) || (x >= GRID_SIZE-2 && y >= GRID_SIZE-2))) {
+                    if (map[y][x] === TILE_TYPES.EMPTY && !inCorner(x, y)) {
                         
                         // Probabilité de 60% d'avoir un tonneau
                         if (Math.random() < 0.6) {
@@ -667,15 +715,25 @@
             return gameState.map[gridY][gridX] === TILE_TYPES.EMPTY && !isFlooded(gridX, gridY);
         }
         
-        // Entités simulées par CET onglet : son joueur, plus l'IA en solo. En
-        // multi, chaque onglet n'a autorité que sur les siennes (mort, bonus,
+        // Entités simulées par CET onglet : son joueur, plus les IA si c'est
+        // l'hôte. Chaque onglet n'a autorité que sur les siennes (mort, bonus,
         // explosion de ses bombes) : les positions distantes ont du retard, et
-        // si les deux onglets traitaient tout, chaque bombe explosait deux fois
-        // et un joueur pouvait être tué sur une position déjà quittée.
+        // si tous les onglets traitaient tout, chaque bombe explosait plusieurs
+        // fois et un joueur pouvait être tué sur une position déjà quittée.
         function localEntityIds() {
+            if (!gameState.playerId) return [];
             const ids = [gameState.playerId];
-            if (aiMode) ids.push(aiPlayerId);
+            if (isHost()) ids.push(...aiIds());
             return ids;
+        }
+
+        // Joueurs IA présents dans la partie
+        function aiIds() {
+            return Object.keys(gameState.players).filter(id => isAi(id));
+        }
+        function isAi(id) {
+            const p = gameState.players[id];
+            return !!(p && p.ai);
         }
 
         // Vérifier si une case contient une bombe
@@ -732,15 +790,21 @@
             return Date.now() + serverOffset;
         }
 
-        // Coins de départ
-        const SPAWNS = {
-            player1: [0, 0, '#ff6b6b'],
-            player2: [GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4'],
-            [aiPlayerId]: [GRID_SIZE - 1, GRID_SIZE - 1, '#4ecdc4']
+        // Les 4 places : coin de départ, couleur (rendu sans sprites), tenue,
+        // libellés. player1 = l'hôte (toujours humain) ; player2 part du coin
+        // opposé pour qu'un duel reste équitable, player3/4 des deux autres.
+        const PLAYER_SLOTS = {
+            player1: { x: 0, y: 0, color: '#ff6b6b', skin: 'red', word: 'rouge', ai: 'IA rouge', accent: 'var(--red)' },
+            player2: { x: GRID_SIZE - 1, y: GRID_SIZE - 1, color: '#4ecdc4', skin: 'blue', word: 'bleu', ai: 'IA bleue', accent: 'var(--blue)' },
+            player3: { x: GRID_SIZE - 1, y: 0, color: '#5cc85a', skin: 'green', word: 'vert', ai: 'IA verte', accent: 'var(--green)' },
+            player4: { x: 0, y: GRID_SIZE - 1, color: '#f2c230', skin: 'yellow', word: 'jaune', ai: 'IA jaune', accent: 'var(--yellow)' }
         };
-        function spawnPlayer(id) {
-            const [x, y, color] = SPAWNS[id];
-            return createPlayer(x, y, color);
+        const PLAYER_IDS = Object.keys(PLAYER_SLOTS);
+        function spawnPlayer(id, ai = false) {
+            const slot = PLAYER_SLOTS[id];
+            const player = createPlayer(slot.x, slot.y, slot.color);
+            if (ai) player.ai = true;
+            return player;
         }
 
         // Ordre d'inondation : anneau par anneau depuis le bord. Dans un
@@ -783,29 +847,55 @@
         function isHost() {
             return gameState.playerId === 'player1';
         }
+        // Joueurs du match encore là (un joueur parti disparaît de players)
+        function presentIds() {
+            return matchIds().filter(id => gameState.players[id]);
+        }
+        // « Joueur bleu », « IA verte », ou « L'IA » quand elle est seule
         function nameOf(id) {
-            return (PLAYER_LABELS[id] || { name: id }).name;
+            const slot = PLAYER_SLOTS[id];
+            if (!slot) return id;
+            if (!isAi(id)) return 'Joueur ' + slot.word;
+            return aiIds().length === 1 ? "L'IA" : slot.ai;
         }
-        function opponentOf(id) {
-            return matchIds().find(other => other !== id);
+        // Sujet d'une phrase : « Le joueur bleu », « L'IA verte »
+        function subjectOf(id) {
+            const name = nameOf(id);
+            if (name.startsWith("L'")) return name;
+            return isAi(id) ? "L'" + name : 'Le ' + name.toLowerCase();
         }
+        // Score vu par ce joueur : « 2 à 1 » en duel, sinon la liste
+        // triée « vous 2, IA verte 1, bleu 0 »
         function scoreText(m) {
             const me = gameState.playerId;
-            return `${m.scores[me] || 0} à ${m.scores[opponentOf(me)] || 0}`;
+            const ids = presentIds();
+            if (ids.length === 2 && ids.includes(me)) {
+                return `${m.scores[me] || 0} à ${m.scores[ids.find(id => id !== me)] || 0}`;
+            }
+            return ids.slice()
+                .sort((a, b) => (m.scores[b] || 0) - (m.scores[a] || 0))
+                .map(id => `${id === me ? 'vous' : (isAi(id) ? nameOf(id).replace("L'IA", 'IA') : PLAYER_SLOTS[id].word)} ${m.scores[id] || 0}`)
+                .join(', ');
+        }
+        // Score en fin de phrase : « … gagné 2 à 1 ! » / « … gagné (vous 3, bleu 1) ! »
+        function scoreSuffix(m) {
+            const text = scoreText(m);
+            return text.includes(' à ') ? ' ' + text : ` (${text})`;
         }
 
         function matchEndMessage(m) {
             const w = m.matchWinner;
             if (w === gameState.playerId) {
-                return aiMode ? `Victoire - Vous avez battu l'IA ${scoreText(m)} !` : `Victoire - Vous avez gagné ${scoreText(m)} !`;
+                if (soloMode) return `Victoire - Vous avez battu ${aiIds().length > 1 ? 'les IA' : "l'IA"}${scoreSuffix(m)} !`;
+                return `Victoire - Vous avez gagné${scoreSuffix(m)} !`;
             }
-            const who = w === aiPlayerId ? "L'IA" : 'Le ' + nameOf(w).toLowerCase();
-            return `Défaite - ${who} a gagné ${scoreText(m)} !`;
+            return `Défaite - ${subjectOf(w)} a gagné${scoreSuffix(m)} !`;
         }
         function roundEndMessage(m) {
             if (!m.lastWinner) return `Égalité - personne ne marque (${scoreText(m)})`;
-            const won = m.lastWinner === gameState.playerId;
-            return `${won ? 'Manche gagnée' : 'Manche perdue'} - ${scoreText(m)}`;
+            if (m.lastWinner === gameState.playerId) return `Manche gagnée - ${scoreText(m)}`;
+            if (presentIds().length === 2) return `Manche perdue - ${scoreText(m)}`;
+            return `Manche perdue - ${subjectOf(m.lastWinner)} marque (${scoreText(m)})`;
         }
 
         let roundEndTimer = null;
@@ -816,12 +906,16 @@
             if (!gameState.gameStarted || !gameState.match) return false;
             const m = gameState.match;
             const ids = matchIds();
+            const present = presentIds();
             const endScreen = document.getElementById('gameControls');
 
-            // La partie n'a démarré qu'avec tous les joueurs : si l'un manque
-            // maintenant, c'est qu'il a quitté (onDisconnect)
-            if (!aiMode && ids.some(id => !gameState.players[id])) {
-                gameInfo.textContent = `L'adversaire a quitté la partie`;
+            // La partie n'a démarré qu'avec tous les joueurs : un absent a
+            // quitté (onDisconnect). On continue sans lui, sauf si l'hôte est
+            // parti (plus personne pour juger les manches ni simuler les IA)
+            // ou s'il ne reste qu'un joueur.
+            if (!soloMode && (!gameState.players.player1 || present.length < 2)) {
+                gameInfo.textContent = !gameState.players.player1 ? `L'hôte a quitté la partie`
+                    : ids.length === 2 ? `L'adversaire a quitté la partie` : `Tous les adversaires ont quitté la partie`;
                 endScreen.style.display = 'block';
                 return true;
             }
@@ -835,9 +929,9 @@
                 return true;
             }
 
-            const alive = ids.filter(id => gameState.players[id] && gameState.players[id].alive);
+            const alive = present.filter(id => gameState.players[id].alive);
             if (alive.length <= 1 && isHost() && !roundEndTimer) {
-                // Petit délai : deux joueurs pris dans la même explosion
+                // Petit délai : plusieurs joueurs pris dans la même explosion
                 // meurent à quelques ms d'écart (chacun dans son onglet)
                 roundEndTimer = setTimeout(finishRound, ROUND_END_SETTLE);
             }
@@ -849,7 +943,7 @@
             roundEndTimer = null;
             const m = gameState.match;
             if (!m || m.roundOver || m.matchWinner) return;
-            const alive = matchIds().filter(id => gameState.players[id] && gameState.players[id].alive);
+            const alive = presentIds().filter(id => gameState.players[id].alive);
             if (alive.length > 1) return;
 
             const winner = alive.length === 1 ? alive[0] : null;
@@ -868,14 +962,16 @@
         // Nouvelle manche (resetScores = revanche : nouveau match dans la même
         // salle). Écrit tout en une seule mise à jour pour que les onglets
         // voient la nouvelle carte et les joueurs au coin en même temps.
+        // Un joueur parti en cours de match n'est pas replacé : il sort du
+        // match (et de son score).
         function startRound(resetScores) {
             const m = gameState.match;
             if (!m || !gameState.roomId) return;
-            const ids = matchIds();
+            const ids = presentIds();
             const players = {};
             const scores = {};
             ids.forEach(id => {
-                players[id] = spawnPlayer(id);
+                players[id] = spawnPlayer(id, isAi(id));
                 scores[id] = resetScores ? 0 : (m.scores[id] || 0);
             });
             database.ref(`games/${gameState.roomId}`).update({
@@ -903,71 +999,40 @@
             // Vérifier si le jeu est terminé
             if (checkGameOver()) return;
             
-            const player = gameState.players[gameState.playerId];
-            if (!player || !player.alive) return;
-
             const now = Date.now();
 
-            // Démarrer un nouveau pas de grille si le joueur n'est pas déjà en train
-            // d'en traverser un (une touche = une case, pas de mouvement libre)
-            if (countdownActive()) {
-                // décompte 3-2-1 : pas de déplacement
-            } else if (gameState.keys['ArrowUp']) {
-                stepEntityOnGrid(player, 0, -1, now);
-            } else if (gameState.keys['ArrowDown']) {
-                stepEntityOnGrid(player, 0, 1, now);
-            } else if (gameState.keys['ArrowLeft']) {
-                stepEntityOnGrid(player, -1, 0, now);
-            } else if (gameState.keys['ArrowRight']) {
-                stepEntityOnGrid(player, 1, 0, now);
+            // Joueur local vivant : clavier. Mort, il regarde la fin de la
+            // manche, mais la suite (bombes, IA de l'hôte…) continue de tourner.
+            const player = gameState.players[gameState.playerId];
+            if (player && player.alive) {
+                // Démarrer un nouveau pas de grille si le joueur n'est pas déjà en train
+                // d'en traverser un (une touche = une case, pas de mouvement libre)
+                if (countdownActive()) {
+                    // décompte 3-2-1 : pas de déplacement
+                } else if (gameState.keys['ArrowUp']) {
+                    stepEntityOnGrid(player, 0, -1, now);
+                } else if (gameState.keys['ArrowDown']) {
+                    stepEntityOnGrid(player, 0, 1, now);
+                } else if (gameState.keys['ArrowLeft']) {
+                    stepEntityOnGrid(player, -1, 0, now);
+                } else if (gameState.keys['ArrowRight']) {
+                    stepEntityOnGrid(player, 1, 0, now);
+                }
+
+                // Faire avancer l'interpolation en cours (si le joueur est entre deux cases)
+                if (advanceEntityMovement(player, now)) syncMovement(gameState.playerId, player, now);
+
+                // Malus « bombes incontrôlables » : pose dès que possible
+                if (hasMalus(player, 'diarrhee')) placeBomb();
             }
 
-            // Faire avancer l'interpolation en cours (si le joueur est entre deux cases)
-            const playerMoved = advanceEntityMovement(player, now);
-
-            // Malus « bombes incontrôlables » : pose dès que possible
-            if (hasMalus(player, 'diarrhee')) placeBomb();
-
-            // Mettre à jour la position sur Firebase si le joueur a bougé
-            // (throttlée pour ne pas envoyer une écriture réseau à chaque frame,
-            // ce qui rendait le déplacement saccadé)
-            // Toujours envoyer l'arrivée d'un pas (moving repasse à false) : sinon, si
-            // elle tombe dans la fenêtre de throttle, l'autre onglet garde une
-            // position à cheval entre deux cases jusqu'au mouvement suivant.
-            if (playerMoved && (!player.moving || now - lastPositionSync >= POSITION_SYNC_INTERVAL)) {
-                lastPositionSync = now;
-                database.ref(`games/${gameState.roomId}/players/${gameState.playerId}`).update({
-                    x: player.x,
-                    y: player.y,
-                    moving: player.moving,
-                    fromX: player.fromX,
-                    fromY: player.fromY,
-                    toX: player.toX,
-                    toY: player.toY,
-                    moveStart: player.moveStart
-                });
-            }
-            
-            // Faire avancer l'interpolation de l'IA (elle décide toutes les
-            // AI_MOVE_DELAY ms via startAI, mais doit avancer chaque frame comme
-            // le joueur pour que sa vitesse affichée soit comparable)
-            if (aiMode) {
-                const aiPlayer = gameState.players[aiPlayerId];
-                if (aiPlayer && aiPlayer.alive) {
-                    const aiMoved = advanceEntityMovement(aiPlayer, now);
-                    if (aiMoved && (!aiPlayer.moving || now - lastAiPositionSync >= POSITION_SYNC_INTERVAL)) {
-                        lastAiPositionSync = now;
-                        database.ref(`games/${gameState.roomId}/players/${aiPlayerId}`).update({
-                            x: aiPlayer.x,
-                            y: aiPlayer.y,
-                            moving: aiPlayer.moving,
-                            fromX: aiPlayer.fromX,
-                            fromY: aiPlayer.fromY,
-                            toX: aiPlayer.toX,
-                            toY: aiPlayer.toY,
-                            moveStart: aiPlayer.moveStart
-                        });
-                    }
+            // Faire avancer l'interpolation des IA simulées ici (elles décident
+            // toutes les AI_MOVE_DELAY ms via startAI, mais doivent avancer
+            // chaque frame comme le joueur pour que leur vitesse soit comparable)
+            if (isHost()) {
+                for (const id of aiIds()) {
+                    const aiPlayer = gameState.players[id];
+                    if (aiPlayer.alive && advanceEntityMovement(aiPlayer, now)) syncMovement(id, aiPlayer, now);
                 }
             }
 
@@ -989,6 +1054,27 @@
             gameState.floatingTexts = gameState.floatingTexts.filter(
                 ft => now - ft.startTime < FLOATING_TEXT_DURATION
             );
+        }
+
+        // Envoyer la position d'une entité locale sur Firebase après un
+        // mouvement (throttlée pour ne pas envoyer une écriture réseau à
+        // chaque frame, ce qui rendait le déplacement saccadé).
+        // Toujours envoyer l'arrivée d'un pas (moving repasse à false) : sinon, si
+        // elle tombe dans la fenêtre de throttle, les autres onglets gardent une
+        // position à cheval entre deux cases jusqu'au mouvement suivant.
+        function syncMovement(id, entity, now) {
+            if (entity.moving && now - (lastPositionSync[id] || 0) < POSITION_SYNC_INTERVAL) return;
+            lastPositionSync[id] = now;
+            database.ref(`games/${gameState.roomId}/players/${id}`).update({
+                x: entity.x,
+                y: entity.y,
+                moving: entity.moving,
+                fromX: entity.fromX,
+                fromY: entity.fromY,
+                toX: entity.toX,
+                toY: entity.toY,
+                moveStart: entity.moveStart
+            });
         }
 
         // Dessiner le jeu : la mer autour, puis le plateau décalé d'une
@@ -1041,7 +1127,13 @@
             ctx.fillText(title, 0, -18);
             ctx.fillStyle = '#3b2412';
             ctx.font = '700 20px "Baloo 2", sans-serif';
-            ctx.fillText(`Score : ${scoreText(m)}`, 0, 30);
+            // À plus de 2, le score complet est sur les fiches : on dit qui marque
+            let line = `Score : ${scoreText(m)}`;
+            if (presentIds().length > 2) {
+                line = !m.lastWinner ? 'Personne ne marque'
+                    : m.lastWinner === gameState.playerId ? 'Vous marquez un point' : `${subjectOf(m.lastWinner)} marque`;
+            }
+            ctx.fillText(line, 0, 30);
             ctx.restore();
         }
 
@@ -1321,22 +1413,48 @@
                 clearInterval(aiMoveInterval);
             }
 
+            // Une seule boucle pour toutes les IA de la partie (niveau de
+            // l'hôte), qui ne tourne que dans l'onglet de l'hôte
             aiMoveInterval = setInterval(() => {
-                if (!aiMode || !gameState.gameStarted || countdownActive()) return;
+                if (!isHost() || !gameState.gameStarted || countdownActive()) return;
                 if (gameState.match && gameState.match.roundOver) return;
 
-                const aiPlayer = gameState.players[aiPlayerId];
-                if (!aiPlayer || !aiPlayer.alive) return;
-
-                moveAI(aiPlayer);
+                for (const id of aiIds()) {
+                    const aiPlayer = gameState.players[id];
+                    if (aiPlayer.alive) moveAI(id, aiPlayer);
+                }
             }, aiSettings().moveDelay);
         }
 
-        // Déplacer l'IA - comportement reconstruit : décision de bombe et
-        // décision de déplacement sont maintenant deux étapes indépendantes,
-        // exécutées à chaque tick de décision (AI_MOVE_DELAY), qu'un pas de
-        // grille soit en cours ou non.
-        function moveAI(aiPlayer) {
+        function stopAI() {
+            if (aiMoveInterval) clearInterval(aiMoveInterval);
+            aiMoveInterval = null;
+        }
+
+        // Ennemi vivant le plus proche (distance en cases) : les humains ET
+        // les autres IA, c'est chacun pour soi
+        function nearestEnemy(id, gridX, gridY) {
+            let best = null;
+            let bestDist = Infinity;
+            for (const otherId of Object.keys(gameState.players)) {
+                const other = gameState.players[otherId];
+                if (otherId === id || !other || !other.alive) continue;
+                const dist = Math.abs(Math.floor(other.x / TILE_SIZE) - gridX) +
+                             Math.abs(Math.floor(other.y / TILE_SIZE) - gridY);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = other;
+                }
+            }
+            return best;
+        }
+
+        // Déplacer une IA - décision de bombe et décision de déplacement sont
+        // deux étapes indépendantes, exécutées à chaque tick de décision
+        // (AI_MOVE_DELAY), qu'un pas de grille soit en cours ou non.
+        function moveAI(id, aiPlayer) {
+            const brain = aiBrain(id);
+            const note = action => updateDebugInfo(id, action);
             // Ne rien décider tant que l'IA est en train de traverser une case :
             // le pas en cours doit finir avant d'en démarrer un autre.
             if (aiPlayer.moving) return;
@@ -1348,8 +1466,8 @@
             // Ramasser un bonus présent sur la case actuelle
             const bonusHere = getBonusAt(gridX, gridY);
             if (bonusHere) {
-                collectBonus(aiPlayerId, bonusHere);
-                updateDebugInfo("Bonus collecté!");
+                collectBonus(id, bonusHere);
+                note("Bonus collecté!");
             }
 
             // Directions possibles: haut, bas, gauche, droite
@@ -1375,7 +1493,7 @@
             // Ne jamais poser si on est déjà en train de fuir un danger, ou si
             // une bombe est déjà présente sous nos pieds.
             if (!nearbyBomb && !hasBomb(gridX, gridY)) {
-                const placed = tryPlaceAIBomb(aiPlayer);
+                const placed = tryPlaceAIBomb(id, aiPlayer);
                 // On vient de poser une bombe sous ses propres pieds : il faut
                 // repasser en mode fuite dès ce tick-ci, pas attendre le
                 // prochain cycle de décision 300ms plus tard.
@@ -1388,14 +1506,14 @@
             // ÉTAPE 2 : décider de la direction de déplacement
             //--------------------------------------------------
             if (validDirections.length === 0) {
-                updateDebugInfo("Bloqué");
+                note("Bloqué");
                 return;
             }
 
             let chosenDirection;
 
             // N'envisager que les directions qui ne mènent PAS dans une zone
-            // dangereuse : sinon l'IA, une fois à l'abri, repart vers le joueur
+            // dangereuse : sinon l'IA, une fois à l'abri, repart vers sa cible
             // en retraversant le rayon de sa propre bombe encore active.
             let safeDirections = validDirections.filter(dir =>
                 !isCellDangerous(gridX + dir.dx, gridY + dir.dy)
@@ -1418,15 +1536,15 @@
                     !isCellOnFire(gridX + dir.dx, gridY + dir.dy)
                 );
                 if (fireFreeDirections.length === 0) {
-                    updateDebugInfo("Coincé par les flammes");
+                    note("Coincé par les flammes");
                     return;
                 }
                 chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections);
-                updateDebugInfo("Fuite de bombe");
+                note("Fuite de bombe");
             } else if (safeDirections.length === 0) {
                 // À l'abri, mais toute case adjacente est menacée : ne pas bouger,
                 // attendre que la bombe explose plutôt que de jouer avec le feu.
-                updateDebugInfo("Attend (à l'abri)");
+                note("Attend (à l'abri)");
                 return;
             } else {
                 // Sinon, aller chercher un bonus proche
@@ -1442,25 +1560,25 @@
                     });
 
                     chosenDirection = safeDirections[0];
-                    updateDebugInfo("Vers bonus");
+                    note("Vers bonus");
                 } else {
-                    // Comportement normal: se diriger vers le joueur humain
-                    const player = gameState.players['player1'];
+                    // Comportement normal : chasser l'ennemi vivant le plus proche
+                    const player = nearestEnemy(id, gridX, gridY);
 
                     if (player && player.alive && Math.random() < aiSettings().wander) {
                         // Niveaux faciles : flâne de temps en temps au lieu de chasser
                         chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
-                        updateDebugInfo("Flâne");
+                        note("Flâne");
                     } else if (player && player.alive) {
                         // Éviter les mouvements d'aller-retour
                         const nonBacktrackingMoves = safeDirections.filter(dir =>
-                            !(dir.dx === -aiLastMove.dx && dir.dy === -aiLastMove.dy)
+                            !(dir.dx === -brain.lastMove.dx && dir.dy === -brain.lastMove.dy)
                         );
 
                         const movesToConsider = nonBacktrackingMoves.length > 0 ?
                                                nonBacktrackingMoves : safeDirections;
 
-                        // IA agressive : toujours foncer vers le joueur, jamais
+                        // IA agressive : toujours foncer vers sa cible, jamais
                         // de fuite par timidité quand il est proche (l'ancien
                         // comportement "évite joueur" la rendait molle).
                         movesToConsider.sort((a, b) => {
@@ -1471,15 +1589,15 @@
                             return distA - distB;
                         });
 
-                        // Toujours prendre la meilleure direction vers le joueur
+                        // Toujours prendre la meilleure direction vers la cible
                         // (plus d'aléatoire ici : elle ne doit plus temporiser)
                         chosenDirection = movesToConsider[0];
 
-                        updateDebugInfo("Vers joueur");
+                        note("Vers ennemi");
                     } else {
-                        // Si pas de joueur, déplacement aléatoire
+                        // Plus d'ennemi vivant : déplacement aléatoire
                         chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
-                        updateDebugInfo("Aléatoire");
+                        note("Aléatoire");
                     }
                 }
             }
@@ -1490,7 +1608,7 @@
 
                 if (started) {
                     // Mémoriser le dernier mouvement pour éviter les aller-retours
-                    aiLastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
+                    brain.lastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
                 }
             }
         }
@@ -1643,7 +1761,7 @@
         }
 
         // L'IA place une bombe
-        function tryPlaceAIBomb(aiPlayer) {
+        function tryPlaceAIBomb(id, aiPlayer) {
             // Obtenir la position de la grille
             const gridX = Math.floor(aiPlayer.x / TILE_SIZE);
             const gridY = Math.floor(aiPlayer.y / TILE_SIZE);
@@ -1655,13 +1773,13 @@
             
             // Compte le nombre de bombes actives de l'IA
             const activeBombs = gameState.bombs.filter(bomb => 
-                bomb.playerId === aiPlayerId
+                bomb.playerId === id
             );
             
             // Placer la bombe si possible
             if (bombsAtPosition.length === 0 && activeBombs.length < aiPlayer.maxBombs) {
                 // Vérifier s'il est stratégique de poser une bombe ici
-                const isStrategic = isStrategicToBomb(gridX, gridY, aiPlayer.bombRange);
+                const isStrategic = isStrategicToBomb(id, gridX, gridY, aiPlayer.bombRange);
                 if (!isStrategic) return false;
 
                 // Vérifier qu'une vraie case sûre est atteignable avant l'explosion
@@ -1678,7 +1796,7 @@
                 // détonateur) : toute sa logique de fuite repose sur le délai
                 const newBomb = {
                     id: bombRef.key,
-                    playerId: aiPlayerId,
+                    playerId: id,
                     x: gridX,
                     y: gridY,
                     range: aiPlayer.bombRange,
@@ -1688,7 +1806,7 @@
 
                 // Ajouter la bombe à Firebase avec son id qui correspond à la clé Firebase
                 bombRef.set(newBomb);
-                updateDebugInfo("Bombe posée");
+                updateDebugInfo(id, "Bombe posée");
                 return true;
             }
             
@@ -1698,20 +1816,16 @@
         // Vérifier s'il est stratégique de poser une bombe (utilise la vraie
         // portée de l'IA, pas une valeur fixe, pour rester cohérent avec les
         // bonus de puissance ramassés)
-        function isStrategicToBomb(gridX, gridY, bombRange) {
-            // Si près du joueur et dans la portée réelle de la bombe, c'est stratégique
-            const player = gameState.players['player1'];
-            if (player && player.alive) {
-                const playerGridX = Math.floor(player.x / TILE_SIZE);
-                const playerGridY = Math.floor(player.y / TILE_SIZE);
-
-                const distX = Math.abs(playerGridX - gridX);
-                const distY = Math.abs(playerGridY - gridY);
-
-                if ((distX === 0 && distY <= bombRange) || (distY === 0 && distX <= bombRange)) {
-                    return true;
-                }
-            }
+        function isStrategicToBomb(id, gridX, gridY, bombRange) {
+            // Un ennemi vivant (humain ou autre IA) dans la portée réelle de la bombe
+            const enemyInRange = Object.keys(gameState.players).some(otherId => {
+                const other = gameState.players[otherId];
+                if (otherId === id || !other || !other.alive) return false;
+                const distX = Math.abs(Math.floor(other.x / TILE_SIZE) - gridX);
+                const distY = Math.abs(Math.floor(other.y / TILE_SIZE) - gridY);
+                return (distX === 0 && distY <= bombRange) || (distY === 0 && distX <= bombRange);
+            });
+            if (enemyInRange) return true;
 
             // Si des briques peuvent être détruites, c'est aussi stratégique
             const directions = [
@@ -1782,58 +1896,31 @@
             }
         }
 
-        // Mettre à jour les infos de debug
-        function updateDebugInfo(action = "") {
-            if (!debugDiv) return;
-            
-            // Mettre à jour l'action de l'IA
-            const aiActionSpan = document.getElementById('aiAction');
-            if (aiActionSpan) {
-                aiActionSpan.textContent = action;
-            }
+        // Noter une décision de l'IA `id` : historique de debug (vidé dans
+        // la console à chaque mort) + panneau de debug s'il est affiché
+        function updateDebugInfo(id, action = "") {
+            const ai = gameState.players[id];
+            if (!action || !ai) return;
+            const history = aiBrain(id).history;
+            history.push(`${new Date().toISOString().slice(17, 23)}s ` +
+                `(${Math.floor(ai.x / TILE_SIZE)},${Math.floor(ai.y / TILE_SIZE)}) ${action}`);
+            if (history.length > AI_HISTORY_SIZE) history.shift();
 
-            const aiForHistory = gameState.players && gameState.players[aiPlayerId];
-            if (action && aiForHistory) {
-                aiHistory.push(`${new Date().toISOString().slice(17, 23)}s ` +
-                    `(${Math.floor(aiForHistory.x / TILE_SIZE)},${Math.floor(aiForHistory.y / TILE_SIZE)}) ${action}`);
-                if (aiHistory.length > AI_HISTORY_SIZE) aiHistory.shift();
+            if (debugDiv && debugDiv.style.display !== 'none') {
+                debugDiv.textContent = aiIds().map(aiId => {
+                    const p = gameState.players[aiId];
+                    const last = aiBrain(aiId).history.slice(-1)[0] || '-';
+                    return `${aiId} bombes ${p.maxBombs} portée ${p.bombRange} : ${last}`;
+                }).join('\n');
             }
-            
-            // Mettre à jour les positions et stats
-            if (gameState.players) {
-                // IA
-                const ai = gameState.players[aiPlayerId];
-                if (ai) {
-                    const aiGridX = Math.floor(ai.x / TILE_SIZE);
-                    const aiGridY = Math.floor(ai.y / TILE_SIZE);
-                    
-                    const aiGridXSpan = document.getElementById('aiGridX');
-                    const aiGridYSpan = document.getElementById('aiGridY');
-                    const aiBombsSpan = document.getElementById('aiBombs');
-                    const aiPowerSpan = document.getElementById('aiPower');
-                    
-                    if (aiGridXSpan) aiGridXSpan.textContent = aiGridX;
-                    if (aiGridYSpan) aiGridYSpan.textContent = aiGridY;
-                    if (aiBombsSpan) aiBombsSpan.textContent = ai.maxBombs;
-                    if (aiPowerSpan) aiPowerSpan.textContent = ai.bombRange;
-                }
-                
-                // Joueur
-                const player = gameState.players['player1'];
-                if (player) {
-                    const playerGridX = Math.floor(player.x / TILE_SIZE);
-                    const playerGridY = Math.floor(player.y / TILE_SIZE);
-                    
-                    const playerGridXSpan = document.getElementById('playerGridX');
-                    const playerGridYSpan = document.getElementById('playerGridY');
-                    const playerBombsSpan = document.getElementById('playerBombs');
-                    const playerPowerSpan = document.getElementById('playerPower');
-                    
-                    if (playerGridXSpan) playerGridXSpan.textContent = playerGridX;
-                    if (playerGridYSpan) playerGridYSpan.textContent = playerGridY;
-                    if (playerBombsSpan) playerBombsSpan.textContent = player.maxBombs;
-                    if (playerPowerSpan) playerPowerSpan.textContent = player.bombRange;
-                }
+        }
+
+        // Dernières décisions des IA, dans la console (repère de debug à
+        // chaque mort)
+        function logAiHistory() {
+            for (const id of aiIds()) {
+                const history = aiBrain(id).history;
+                if (history.length) log(`Dernières décisions ${id} :\n  ${history.join('\n  ')}`);
             }
         }
 
@@ -2049,9 +2136,7 @@
                     log(`MORT de ${playerId} en (${playerGridX},${playerGridY}) ` +
                         `[x=${Math.round(player.x)} y=${Math.round(player.y)} moving=${player.moving}] ` +
                         `- bombe de ${bomb.playerId} en (${bomb.x},${bomb.y}) portée ${bomb.range}`);
-                    if (aiMode) {
-                        log(`Dernières décisions IA :\n  ${aiHistory.join('\n  ')}`);
-                    }
+                    logAiHistory();
 
                     // Marquer le joueur comme mort
                     database.ref(`games/${gameState.roomId}/players/${playerId}/alive`).set(false);
@@ -2085,9 +2170,7 @@
                 log(`MORT de ${id} en (${gridX},${gridY}) [x=${Math.round(player.x)} ` +
                     `y=${Math.round(player.y)} moving=${player.moving}] - ` +
                     (drowned ? 'noyé par la marée' : 'entré dans une flamme active'));
-                if (aiMode) {
-                    log(`Dernières décisions IA :\n  ${aiHistory.join('\n  ')}`);
-                }
+                logAiHistory();
 
                 // Mort locale immédiate : sinon on réécrirait alive=false à
                 // chaque frame jusqu'au retour Firebase
@@ -2326,9 +2409,11 @@
         }
 
         // Tenue de chaque joueur
+        // (maillot à la couleur de la place ; IA : maillot anthracite et
+        // bandana de la couleur de sa place, voir tools/build_sprites.py)
         function skinOf(playerId) {
-            if (playerId === aiPlayerId) return 'ai';
-            return playerId === 'player2' ? 'blue' : 'red';
+            const skin = (PLAYER_SLOTS[playerId] || PLAYER_SLOTS.player1).skin;
+            return isAi(playerId) && skin !== 'red' ? 'ai_' + skin : skin;
         }
 
         // État d'animation par joueur, calculé à partir de la position
@@ -2580,7 +2665,7 @@
                 case BONUS_TYPES.MALUS: {
                     // L'IA ne subit pas « bombes incontrôlables » (elle se
                     // suiciderait) : elle tire parmi les deux autres
-                    const pool = Object.keys(MALUS_TYPES).filter(k => !(playerId === aiPlayerId && k === 'diarrhee'));
+                    const pool = Object.keys(MALUS_TYPES).filter(k => !(player.ai && k === 'diarrhee'));
                     player.malus = pool[Math.floor(Math.random() * pool.length)];
                     player.malusUntil = Date.now() + MALUS_DURATION;
                     break;
@@ -2707,7 +2792,9 @@
         // GESTION DU MULTIJOUEUR
         //--------------------------------------------------
 
-        // Créer une nouvelle partie multijoueur
+        // Créer une nouvelle partie multijoueur : l'hôte (player1) ouvre une
+        // salle d'attente. Les amis prennent les places libres, l'hôte peut
+        // compléter avec des IA, puis lance la partie (launchGame).
         function createGame() {
             log("Création d'une nouvelle partie multijoueur");
             // Générer un code de salle si non spécifié
@@ -2715,7 +2802,7 @@
             roomInput.value = roomId;
             gameState.roomId = roomId;
             gameState.playerId = 'player1';
-            aiMode = false;
+            soloMode = false;
             
             // Créer la partie dans Firebase
             const gameRef = database.ref(`games/${roomId}`);
@@ -2727,17 +2814,19 @@
                 bombs: {},
                 explosions: {},
                 bonuses: {},
-                // la manche 1 démarre quand le joueur 2 arrive (roundStart)
+                // la manche 1 démarre quand l'hôte lance la partie (roundStart)
                 match: newMatch(['player1'], false),
                 gameStarted: false
             });
             
             // Rejoindre la partie
             joinGame(roomId, 'player1');
-            gameInfo.textContent = `Partie créée ! Code: ${roomId} - En attente d'un autre joueur...`;
+            // Boucle des IA bouche-trou (ne fait rien tant qu'il n'y en a pas)
+            startAI();
+            gameInfo.textContent = `Partie créée ! Code : ${roomId} - Donne-le à tes amis (jusqu'à 4 joueurs)`;
         }
 
-        // Rejoindre une partie existante
+        // Rejoindre une partie existante, sur la première place libre
         function joinExistingGame() {
             log("Tentative de rejoindre une partie existante");
             const roomId = roomInput.value;
@@ -2754,30 +2843,105 @@
                     alert('Partie non trouvée');
                     return;
                 }
-                
-                // Vérifier si la partie est complète
-                if (gameData.players && gameData.players.player2) {
+                if (gameData.gameStarted) {
+                    alert('Partie déjà commencée');
+                    return;
+                }
+                const slot = PLAYER_IDS.find(id => !(gameData.players || {})[id]);
+                if (!slot) {
                     alert('Partie déjà complète');
                     return;
                 }
                 
-                // Rejoindre en tant que joueur 2
-                gameState.roomId = roomId;
-                gameState.playerId = 'player2';
-                aiMode = false;
-                
-                // Ajouter le joueur 2 à la partie
-                gameRef.update({
-                    'players/player2': spawnPlayer('player2'),
-                    'match/scores/player2': 0,
-                    'match/roundStart': firebase.database.ServerValue.TIMESTAMP,
-                    gameStarted: true
+                // Prise de place atomique : deux amis qui rejoignent en même
+                // temps (ou l'hôte qui ajoute une IA) ne peuvent pas obtenir
+                // la même place
+                gameRef.child(`players/${slot}`).transaction(current =>
+                    current === null ? spawnPlayer(slot) : undefined
+                ).then(({ committed }) => {
+                    if (!committed) {
+                        alert('Cette place vient d\'être prise, réessaie');
+                        return;
+                    }
+                    gameState.roomId = roomId;
+                    gameState.playerId = slot;
+                    soloMode = false;
+                    gameRef.update({ [`match/scores/${slot}`]: 0 });
+                    // On vient de voir l'hôte : pas seul dès le départ
+                    joinGame(roomId, slot, false);
+                    gameInfo.textContent = `Partie ${roomId} rejointe - Vous êtes le ${nameOf(slot).toLowerCase()}`;
                 });
-                
-                // Rejoindre la partie
-                // On vient de vérifier que player1 est là : pas seul dès le départ
-                joinGame(roomId, 'player2', false);
             });
+        }
+
+        // Hôte, salle d'attente : ajouter une IA sur une place libre, ou la
+        // retirer (même prise de place atomique qu'un joueur qui rejoint)
+        function addLobbyAi(id) {
+            if (!isHost() || gameState.gameStarted || !PLAYER_SLOTS[id] || id === 'player1') return;
+            const gameRef = database.ref(`games/${gameState.roomId}`);
+            gameRef.child(`players/${id}`).transaction(current =>
+                current === null ? spawnPlayer(id, true) : undefined
+            ).then(({ committed }) => {
+                if (committed) gameRef.update({ [`match/scores/${id}`]: 0 });
+            });
+        }
+        function removeLobbyAi(id) {
+            if (!isHost() || gameState.gameStarted || !isAi(id)) return;
+            database.ref(`games/${gameState.roomId}`).update({
+                [`players/${id}`]: null,
+                [`match/scores/${id}`]: null
+            });
+        }
+
+        // Hôte : lancer la partie avec les joueurs présents (2 minimum). Les
+        // scores sont réécrits depuis players : un ami parti de la salle
+        // d'attente n'y laisse pas de fantôme.
+        function launchGame() {
+            if (!isHost() || gameState.gameStarted) return;
+            const ids = PLAYER_IDS.filter(id => gameState.players[id]);
+            if (ids.length < 2) return;
+            const scores = {};
+            ids.forEach(id => { scores[id] = 0; });
+            database.ref(`games/${gameState.roomId}`).update({
+                'match/scores': scores,
+                'match/roundStart': firebase.database.ServerValue.TIMESTAMP,
+                gameStarted: true
+            });
+        }
+
+        // Salle d'attente : les 4 places, visibles par tous ; boutons IA et
+        // lancement pour l'hôte
+        function renderLobby(gameData) {
+            const lobby = document.getElementById('lobby');
+            const show = !!gameState.roomId && !soloMode && !!gameData && !gameData.gameStarted;
+            lobby.hidden = !show;
+            if (!show) return;
+            const players = gameData.players || {};
+            const host = isHost();
+            const lobbyAis = PLAYER_IDS.filter(id => players[id] && players[id].ai).length;
+            document.getElementById('lobbyCode').textContent = gameState.roomId;
+            document.getElementById('lobbySlots').innerHTML = PLAYER_IDS.map(id => {
+                const p = players[id];
+                const slot = PLAYER_SLOTS[id];
+                const label = !p ? 'Place libre' : (p.ai ? (lobbyAis === 1 ? "L'IA" : slot.ai) : 'Joueur ' + slot.word) +
+                    (id === gameState.playerId ? ' (vous)' : '');
+                let action = '';
+                if (host && id !== 'player1') {
+                    if (!p) action = `<button type="button" class="btn btn-small" data-add-ai="${id}">Ajouter une IA</button>`;
+                    else if (p.ai) action = `<button type="button" class="btn btn-small btn-ghost" data-remove-ai="${id}">Retirer</button>`;
+                }
+                return `<li class="${p ? '' : 'free'}" style="--accent:${slot.accent}">
+                    <span class="portrait sprite" style="${p ? spriteCss((p.ai ? 'ai_' + slot.skin : slot.skin) + '_down_0', 40) : ''}"></span>
+                    <span class="slot-name">${label}</span>${action}</li>`;
+            }).join('');
+            const count = PLAYER_IDS.filter(id => players[id]).length;
+            const launchBtn = document.getElementById('launchBtn');
+            // style et non l'attribut hidden : .btn impose son display
+            launchBtn.style.display = host ? '' : 'none';
+            launchBtn.disabled = count < 2;
+            document.getElementById('lobbyHint').textContent = !host ? "En attente du lancement par l'hôte…"
+                : count < 2 ? 'Donne le code à tes amis ou ajoute une IA'
+                : `${count} joueurs prêts`;
         }
 
         // Supprimer l'ancienne partie de Firebase avant d'en créer une nouvelle.
@@ -2797,15 +2961,22 @@
             // dessus le spawn frais (16,16) reçu de Firebase — le joueur
             // apparaissait alors au milieu de la carte au lieu du coin.
             gameState.players = {};
-            aiHistory = [];
+            for (const id in aiBrains) delete aiBrains[id];
             gameState.gameStarted = false;
             gameState.match = null;
             lastRoundKey = null;
         }
 
-        // Créer une partie solo contre l'IA
+        function soloInfoText() {
+            const n = aiIds().length || aiCount;
+            return `Partie solo contre ${n > 1 ? n + ' IA' : "l'IA"} (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
+        }
+
+        // Créer une partie solo contre aiCount IA (places 2, 3, 4 : une
+        // seule IA part du coin opposé, comme avant)
         function createSinglePlayerGame() {
-            log("Création d'une partie solo contre l'IA");
+            log(`Création d'une partie solo contre ${aiCount} IA`);
+            stopAI();
             cleanupCurrentGame();
 
             // Générer un code de salle pour le mode solo
@@ -2813,29 +2984,31 @@
             roomInput.value = roomId;
             gameState.roomId = roomId;
             gameState.playerId = 'player1';
-            aiMode = true;
+            soloMode = true;
+
+            const ids = PLAYER_IDS.slice(0, 1 + aiCount);
+            const players = {};
+            ids.forEach((id, i) => { players[id] = spawnPlayer(id, i > 0); });
             
-            // Créer la partie dans Firebase avec le joueur humain et l'IA
+            // Créer la partie dans Firebase avec le joueur humain et les IA
             const gameRef = database.ref(`games/${roomId}`);
             gameRef.set({
                 map: generateMap(),
-                players: {
-                    player1: spawnPlayer('player1'),
-                    [aiPlayerId]: spawnPlayer(aiPlayerId)
-                },
+                players,
                 bombs: {},
                 explosions: {},
                 bonuses: {},
-                match: newMatch(['player1', aiPlayerId], true),
+                match: newMatch(ids, true),
                 gameStarted: true
             });
             
             // Rejoindre la partie
             joinGame(roomId, 'player1');
-            gameInfo.textContent = `Partie solo contre l'IA (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
+            gameInfo.textContent = soloInfoText();
             
-            // Démarrer l'IA
+            // Démarrer les IA
             startAI();
+            document.getElementById('gameControls').style.display = 'none';
         }
 
         // Ce qui arrive à la partie si CET onglet se déconnecte :
@@ -2919,8 +3092,8 @@
                 gameState.players = newPlayers;
 
                 // Suis-je le seul humain encore présent ? (solo = toujours seul)
-                const humans = Object.keys(newPlayers).filter(id => id !== aiPlayerId);
-                lastKnownAlone = aiMode || humans.length <= 1;
+                const humans = Object.keys(newPlayers).filter(id => !newPlayers[id].ai);
+                lastKnownAlone = soloMode || humans.length <= 1;
                 applyDisconnectPolicy(gameRef, playerId, lastKnownAlone);
 
                 // Convertir les objets en tableaux en conservant la clé Firebase
@@ -2953,14 +3126,15 @@
                 
                 gameState.gameStarted = gameData.gameStarted;
                 
-                // Afficher un message quand le jeu commence
-                if (gameState.gameStarted) {
-                    if (aiMode) {
-                        gameInfo.textContent = `Partie solo contre l'IA (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
-                    } else if (gameData.players.player1 && gameData.players.player2) {
-                        gameInfo.textContent = `Partie en ligne - Vous êtes le joueur ${playerId === 'player1' ? 'rouge' : 'bleu'}`;
-                    }
+                // Afficher un message quand une manche est en cours (fin de
+                // manche, fin de match et départs : checkGameOver s'en charge)
+                const m = gameState.match;
+                if (gameState.gameStarted && m && !m.roundOver && !m.matchWinner && newPlayers.player1) {
+                    gameInfo.textContent = soloMode ? soloInfoText()
+                        : `Partie en ligne - Vous êtes le ${nameOf(playerId).toLowerCase()}`;
                 }
+
+                renderLobby(gameData);
             });
             
             // Configurer les déconnexions. Avant, CHAQUE joueur programmait la
@@ -2991,52 +3165,19 @@
         // Fonction pour redémarrer la partie
         function restartGame() {
             log("Redémarrage de la partie");
-            // Si on est en mode solo avec IA
-            if (aiMode) {
-                // Nettoyer l'intervalle de l'IA pour éviter les doublons
-                if (aiMoveInterval) {
-                    clearInterval(aiMoveInterval);
-                }
-
-                cleanupCurrentGame();
-
-                // Régénérer une carte et réinitialiser les joueurs
-                const roomId = 'solo_' + generateId();
-                gameState.roomId = roomId;
-                
-                // Créer une nouvelle partie
-                const gameRef = database.ref(`games/${roomId}`);
-                gameRef.set({
-                    map: generateMap(),
-                    players: {
-                        player1: spawnPlayer('player1'),
-                        [aiPlayerId]: spawnPlayer(aiPlayerId)
-                    },
-                    bombs: {},
-                    explosions: {},
-                    bonuses: {},
-                    match: newMatch(['player1', aiPlayerId], true),
-                    gameStarted: true
-                });
-                
-                // Rejoindre la partie
-                joinGame(roomId, 'player1');
-                gameInfo.textContent = `Partie solo contre l'IA (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
-                
-                // Démarrer l'IA
-                startAI();
-                
-                // Cacher les contrôles de jeu jusqu'à la fin de partie
-                document.getElementById('gameControls').style.display = 'none';
-            } else if (gameState.match && gameState.match.matchWinner &&
-                       matchIds().every(id => gameState.players[id])) {
-                // Multijoueur, adversaire toujours là : revanche dans la même
+            if (soloMode) {
+                // Solo : nouvelle salle, même nombre d'IA
+                createSinglePlayerGame();
+            } else if (gameState.match && gameState.match.matchWinner && gameState.players.player1 &&
+                       presentIds().length >= 2) {
+                // Multijoueur, adversaires toujours là : revanche dans la même
                 // salle (nouveau match, scores remis à zéro)
                 startRound(true);
             } else {
-                // Adversaire parti : revenir à l'écran de création de partie
+                // Adversaires ou hôte partis : revenir à l'écran de création de partie
                 document.getElementById('roomControls').style.display = 'block';
                 document.getElementById('gameControls').style.display = 'none';
+                stopAI();
                 
                 // Déconnecter la partie actuelle
                 if (gameState.roomId) {
@@ -3137,6 +3278,14 @@
         }
 
         
+        document.getElementById('launchBtn').addEventListener('click', launchGame);
+        document.getElementById('lobbySlots').addEventListener('click', e => {
+            const add = e.target.closest('[data-add-ai]');
+            const remove = e.target.closest('[data-remove-ai]');
+            if (add) addLobbyAi(add.dataset.addAi);
+            if (remove) removeLobbyAi(remove.dataset.removeAi);
+        });
+
         const restartBtn = document.getElementById('restartBtn');
         if (restartBtn) {
             restartBtn.addEventListener('click', function() {
@@ -3399,12 +3548,6 @@
                 `background-position:-${x * k}px -${y * k}px;`;
         }
 
-        const PLAYER_LABELS = {
-            player1: { name: 'Joueur rouge', accent: 'var(--red)' },
-            player2: { name: 'Joueur bleu', accent: 'var(--blue)' },
-            [aiPlayerId]: { name: "L'IA", accent: 'var(--ai)' }
-        };
-
         let lastHudKey = '';
 
         // Pouvoirs spéciaux possédés (et malus en cours) sous les stats
@@ -3424,20 +3567,21 @@
         // quelque chose a changé (stats, vivant/mort, partie en cours)
         function updateHud() {
             const hud = document.getElementById('hud');
-            const ids = gameState.roomId ? Object.keys(gameState.players).sort((a, b) =>
+            // Le joueur local en premier, puis dans l'ordre des places
+            const ids = gameState.roomId ? PLAYER_IDS.filter(id => gameState.players[id]).sort((a, b) =>
                 (a === gameState.playerId ? -1 : 0) - (b === gameState.playerId ? -1 : 0)) : [];
             const key = ids.map(id => {
                 const p = gameState.players[id];
                 const score = gameState.match && gameState.match.scores ? gameState.match.scores[id] : 0;
                 const malus = p.malus && Date.now() < (p.malusUntil || 0) ? p.malus : '';
-                return [id, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
+                return [id, nameOf(id), p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
                         p.canKick, p.hasDetonator, p.pierce, malus].join(':');
             }).join('|') + (window.SPRITE_ATLAS ? 's' : '');
             if (key !== lastHudKey) {
                 lastHudKey = key;
                 hud.innerHTML = ids.map(id => {
                     const p = gameState.players[id];
-                    const label = PLAYER_LABELS[id] || { name: id, accent: 'var(--wood)' };
+                    const label = { name: nameOf(id), accent: PLAYER_SLOTS[id].accent };
                     const speed = Math.round(((p.speedMultiplier || 1) - 1) / 0.2);
                     const you = id === gameState.playerId ? '<small>vous</small>' : '<small>&nbsp;</small>';
                     const m = gameState.match;
@@ -3521,6 +3665,19 @@
             soundBtn.blur(); // sinon Espace re-cliquerait le bouton au lieu de poser une bombe
         });
         showSound();
+
+        // Sélecteur du nombre d'IA (solo)
+        const aiCountButtons = document.querySelectorAll('.level-picker [data-ai-count]');
+        function showAiCount() {
+            aiCountButtons.forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.aiCount) === aiCount)));
+            singlePlayerBtn.textContent = aiCount > 1 ? 'Jouer contre les IA' : "Jouer contre l'IA";
+        }
+        aiCountButtons.forEach(b => b.addEventListener('click', () => {
+            aiCount = Number(b.dataset.aiCount);
+            try { localStorage.setItem('islandBomber.aiCount', String(aiCount)); } catch (e) { /* non bloquant */ }
+            showAiCount();
+        }));
+        showAiCount();
 
         // Sélecteur de niveau de l'IA
         const levelButtons = document.querySelectorAll('.level-picker [data-level]');

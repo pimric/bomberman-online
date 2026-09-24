@@ -120,19 +120,28 @@ def is_swimsuit(h, s, v):
     return (h < 0.03 or h > 0.96) and s > 0.45 and v > 0.35
 
 
-def to_blue(h, s, v, fy):
-    if is_swimsuit(h, s, v):
-        return (0.58, s, v)
+# Teinte (HSV) du maillot de chaque joueur : bleu, vert, jaune. Le rouge
+# est la couleur d'origine de la planche.
+SUIT_HUES = {'blue': 0.58, 'green': 0.33, 'yellow': 0.14}
 
 
-def make_ai(head_top):
-    """IA : maillot anthracite + bandana rouge (haut des cheveux)."""
+def swimsuit_to(hue):
+    def rule(h, s, v, fy):
+        if is_swimsuit(h, s, v):
+            # le jaune foncé tire sur le kaki : on l'éclaircit
+            return (hue, s, min(1, v * 1.25)) if hue == SUIT_HUES['yellow'] else (hue, s, v)
+    return rule
+
+
+def make_ai(head_top, bandana_hue):
+    """IA : maillot anthracite + bandana (haut des cheveux) à la couleur de
+    sa place (bleu, vert ou jaune)."""
     def rule(h, s, v, fy):
         if is_swimsuit(h, s, v):
             return (0.62, 0.15, v * 0.35)
         hair = 0.03 <= h <= 0.12 and s > 0.3 and 0.2 < v < 0.75
         if hair and fy < head_top:
-            return (0.0, 0.85, min(1, v * 1.6))
+            return (bandana_hue, 0.85, min(1, v * 1.6))
     return rule
 
 
@@ -223,7 +232,12 @@ def main():
     }
     walk['left'] = [f.transpose(Image.FLIP_LEFT_RIGHT) for f in walk['right']]
 
-    skins = {'red': None, 'blue': to_blue, 'ai': make_ai(0.22)}
+    # Humains : maillot à la couleur de leur place. IA : maillot anthracite
+    # + bandana de la couleur de sa place (jamais rouge : player1 = l'hôte)
+    skins = {'red': None}
+    for color, hue in SUIT_HUES.items():
+        skins[color] = swimsuit_to(hue)
+        skins[f'ai_{color}'] = make_ai(0.22, hue)
     for skin, rule in skins.items():
         for direction, seq in walk.items():
             for i, f in enumerate(seq):

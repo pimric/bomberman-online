@@ -7,7 +7,8 @@ Bomberman sur île tropicale, en ligne. Déployé sur GitHub Pages : **chaque pu
 - Firebase Realtime Database (projet `bomberman-10e44`, région **europe-west1**) pour le multijoueur et le solo contre IA. Pas de backend.
 - `assets/ile.css` : style commun (palette, polices Pacifico + Baloo 2, océan CSS).
 - `assets/sprites.png` + `assets/sprites.js` (`window.SPRITE_ATLAS`, en .js pour marcher en `file://`) générés par `tools/build_sprites.py` (Pillow) depuis les planches `assets/src/*.png` (fond magenta #FF00FF, générées avec Gemini).
-- `tests/multijoueur.test.js` : test auto (puppeteer-core + Chrome local, 2 navigateurs headless, salle `mptest_*` sur la vraie base, supprimée à la fin). `cd tests && npm install && npm test`. **Relancer après toute modif de `game.html`.**
+- `tests/multijoueur.test.js` : test auto (puppeteer-core + Chrome local, jusqu'à 3 navigateurs headless, salle `mptest_*` sur la vraie base, supprimée à la fin). `cd tests && npm install && npm test`. **Relancer après toute modif de `game.html`.**
+  - Sans accès à Firebase (conteneur cloud : Firebase et cdnjs bloqués par le proxy) : `CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run test:local`. La base est alors simulée en mémoire (`tests/mock/hub.js` côté Node + `tests/mock/firebase-client.js` servi à la place du SDK) : écritures locales immédiates + ordre unique via le hub, tableaux à clés entières, `transaction`, `onDisconnect`. Si le jeu utilise une nouvelle API Firebase, l'ajouter au faux SDK.
 - `.git-auto-push.sh` / `bomberman-watch.sh` : ancien auto-push (commit+push à chaque sauvegarde). Ne pas relancer.
 
 ## Vérifier la syntaxe
@@ -20,31 +21,33 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 - Listener `gameRef.on('value')` : ne jamais écraser position/mouvement des entités locales (`LOCAL_MOVEMENT_KEYS`, fusion `Object.assign` dans l'objet existant). Contrepartie : `cleanupCurrentGame()` et chaque nouvelle manche remettent `gameState.players = {}`, sinon l'ancienne position locale est réappliquée.
 - **Autorité par onglet** : `localEntityIds()` = joueur local (+ IA en solo). Chaque onglet ne gère que la mort/les bonus de ses entités. Les bombes sont explosées par l'onglet du propriétaire, sauf retard > `BOMB_OWNER_GRACE`.
 - Joueurs distants lissés à l'affichage (`getDisplayPosition`, `remoteDisplay`), purement visuel.
+- **4 places** `PLAYER_SLOTS` (player1..4 : coin, couleur, tenue, libellés). player1 = l'hôte, toujours humain ; player2 au coin opposé (duel équitable). Une IA est un joueur ordinaire avec `ai: true` (`isAi()`, `aiIds()`), simulée par l'onglet de l'hôte : `localEntityIds()` = joueur local + IA si hôte.
+- Multi : salle d'attente (`renderLobby`) tant que `gameStarted` est faux. Les amis prennent la première place libre (`transaction`, anti-collision), l'hôte ajoute/retire des IA puis `launchGame()` (2 joueurs min). Partie commencée = plus d'arrivée.
+- Départ en cours de match : `presentIds()` (joueurs du match encore présents). Le match continue sans lui (il n'est pas replacé à la manche suivante) sauf si l'hôte part ou s'il reste < 2 joueurs.
 - Déconnexion : `applyDisconnectPolicy()` (seul humain → la partie est supprimée, sinon seulement son joueur).
-- IA (`moveAI`, `startAI`) : décision toutes les `AI_MOVE_DELAY` ms, niveaux `AI_LEVELS` (localStorage `islandBomber.aiLevel`). Fuite par BFS (`getBestEscapeDirection`, `hasEscapeRoute` qui simule la bombe avant de la poser, profondeur `aiEscapeMaxSteps()`). Distinguer « je suis en danger » (case actuelle → fuite) et « je vais vers le danger » (case cible → interdit, filtre `safeDirections`).
+- IA (`moveAI(id, ai)`, `startAI` = une boucle pour toutes les IA, `stopAI`) : état par entité dans `aiBrains` (`lastMove`, `history`). Chasse l'ennemi vivant le plus proche (`nearestEnemy`, humains et autres IA). Décision toutes les `AI_MOVE_DELAY` ms, niveaux `AI_LEVELS` (localStorage `islandBomber.aiLevel`, celui de l'hôte en multi), nombre d'IA en solo `aiCount` (`islandBomber.aiCount`). Fuite par BFS (`getBestEscapeDirection`, `hasEscapeRoute` qui simule la bombe avant de la poser, profondeur `aiEscapeMaxSteps()`). Distinguer « je suis en danger » (case actuelle → fuite) et « je vais vers le danger » (case cible → interdit, filtre `safeDirections`).
+- `update()` continue quand le joueur local est mort (spectateur) : ses bombes et les IA de l'hôte doivent continuer à tourner.
 - Manches/marée : `gameState.match`, l'hôte (player1) fait `finishRound()` / `startRound()`. Marée calculée sur l'heure serveur (`serverNow()`), aucune écriture. URL de test : `?manches=N&maree=secondes`.
 - Bonus : BONUS_TYPES (bombe, puissance, vitesse, coup de pied, détonateur, flamme perçante, noix de coco pourrie = malus). Effets : `sfx()` WebAudio, `detectEvents()`, `fx.particles` / `fx.deaths`, textes flottants locaux.
-- Repères debug : `aiHistory` (15 dernières décisions IA), logs `MORT de …` et `IA fuite: aucune case sure…` (compteurs bombes/explosions).
+- Skins : `skinOf()` → red/blue/green/yellow, IA = `ai_<couleur>` (maillot anthracite + bandana de sa couleur), règles `skins` de `build_sprites.py`.
+- Repères debug : `aiBrains[id].history` (15 dernières décisions par IA, `logAiHistory()` à chaque mort), logs `MORT de …` et `IA fuite: aucune case sure…` (compteurs bombes/explosions).
 
 ## Leçons (pièges déjà payés)
 - Toute entité créée par `push()` Firebase DOIT stocker `ref.key` comme `id` (créer la ref avant l'objet). Sinon `.remove()` vise un chemin inexistant → entité immortelle (bombes en boucle, explosions accumulées qui rendaient toute la carte « dangereuse » pour l'IA). Le helper `toArray()` conserve les clés.
 - `databaseURL` doit rester explicite dans `firebaseConfig` (base hors US) ; sinon le SDK échoue silencieusement.
 - La latency compensation Firebase déclenche le listener en synchrone au milieu de `explodeBomb` : à garder en tête en cas d'explosion en chaîne bizarre.
 - Bonus nés d'une explosion : spawn différé (`pendingBonusSpawns`) après `checkBonusesInExplosion`.
+- Les 4 coins de départ sont des cases paires/paires, donc des palmiers par défaut : `generateMap()` doit les dégager explicitement.
+- `.btn` impose son `display` : l'attribut `hidden` ne cache pas un bouton, passer par `style.display`.
 - En `file://`, le warning Chrome « Unsafe attempt to load URL » est bénin ; sinon servir via `python -m http.server`.
 
 ## Style et direction
-- Thème plage/île uniquement (pas de rasta/surfeur/pirate dans les textes). Libellés : « joueur rouge / bleu / l'IA », « Défaite » plutôt que « Game Over ».
+- Thème plage/île uniquement (pas de rasta/surfeur/pirate dans les textes). Libellés : « joueur rouge / bleu / vert / jaune », « l'IA » quand elle est seule, sinon « IA bleue / verte / jaune », « Défaite » plutôt que « Game Over ».
 - Code et commentaires en français.
 
 ## État et prochaine étape
-Lots 1 (sons, animations, niveaux IA), 2 (nouveaux bonus/malus) et 3 (manches, score, marée) faits et testés automatiquement (43/43), pas encore validés en jeu à la main : demander un retour de test d'abord.
+Lots 1 (sons, animations, niveaux IA), 2 (nouveaux bonus/malus), 3 (manches, score, marée) et 4 (jusqu'à 4 joueurs : solo contre 1 à 3 IA, multi avec salle d'attente et IA bouche-trou) faits et testés automatiquement (63/63 en `test:local`), pas encore validés en jeu à la main ni avec `npm test` sur la vraie base : demander un retour de test d'abord.
 
-**Lot 4 : jusqu'à 4 joueurs** (4 coins, humains + IA mélangés). À refactorer, le code suppose 2 joueurs + 1 IA :
-- `aiPlayerId` unique, `aiMode` booléen, `aiLastMove`/`aiHistory`/`aiMoveInterval` globaux → IA par entité (plusieurs IA en solo, IA bouche-trou en multi simulées par l'hôte).
-- `localEntityIds()`, `SPAWNS`, `PLAYER_LABELS`, `skinOf()`, `opponentOf()`/`scoreText()`, `joinExistingGame` (player2 en dur), `isStrategicToBomb`/`moveAI` qui ciblent `player1` → viser l'ennemi vivant le plus proche.
-- Skins joueurs 3/4 : maillots vert/jaune via de nouvelles règles `skins` dans `build_sprites.py`.
-- UI : menu (nb d'IA, places libres), fiches joueurs x4, messages de fin pour N joueurs.
-- Tests : étendre `multijoueur.test.js` (3 navigateurs ou 2 humains + IA).
+Limite connue : les IA sont simulées par l'onglet de l'hôte ; si cet onglet passe en arrière-plan, le navigateur ralentit ses timers et les IA avec.
 
 Non retenu : commandes tactiles.
