@@ -98,6 +98,24 @@ def fit(c, size=SPRITE, anchor='center'):
     return out
 
 
+def fit_character(c, size=SPRITE, scale=None):
+    """Personnage : pieds posés en bas et TÊTE centrée horizontalement.
+    Centrer la boîte faisait bouger la tête d'une image à l'autre (la boîte
+    s'élargit quand les jambes s'écartent). scale : même échelle pour
+    toutes les images d'une planche."""
+    w, h = c.size
+    s = scale or size / max(w, h)
+    r = c.resize((max(1, round(w * s)), max(1, round(h * s))), Image.LANCZOS)
+    px = r.load()
+    rw, rh = r.size
+    head_rows = range(0, int(rh * 0.35))
+    xs = [x for y in head_rows for x in range(rw) if px[x, y][3] > 128]
+    head_x = sum(xs) / len(xs) if xs else rw / 2
+    out = Image.new('RGBA', (size, size))
+    out.paste(r, (round(size / 2 - head_x), size - rh), r)
+    return out
+
+
 # --------------------------------------------------------- recolorations
 def recolor(img, rule):
     out = img.copy()
@@ -221,7 +239,9 @@ def main():
 
     perso = Image.open(os.path.join(SRC, 'personnage.png')).convert('RGB')
     boxes = components(perso)
-    frames = [fit(cutout(perso, b), anchor='bottom') for b in boxes]
+    # même échelle pour toutes les images (la plus haute tient dans la case)
+    char_scale = SPRITE / max(max(b[2] - b[0], b[3] - b[1]) for b in boxes)
+    frames = [fit_character(cutout(perso, b), scale=char_scale) for b in boxes]
     rows = [frames[0:7], frames[7:14], frames[14:21]]
     # Choix des images de marche (voir planche) : la ligne 1 mélange des
     # vues, seules les 4 premières sont de face. Cycle : debout, pas, debout, pas.

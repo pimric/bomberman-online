@@ -223,6 +223,46 @@
             .keys-hint { display: none; }
         }
 
+        /* Réglages de la partie (menu) */
+        .settings { margin-top: 14px; text-align: center; }
+        .settings summary {
+            cursor: pointer;
+            font-weight: 800;
+            color: var(--wood);
+            list-style-position: inside;
+        }
+        .settings .level-picker { flex-wrap: wrap; }
+        .bonus-toggles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .bonus-toggles button {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 3px 10px 3px 4px;
+            border-radius: 999px;
+            border: 2px solid var(--sand-deep);
+            background: #fff;
+            color: var(--wood);
+            cursor: pointer;
+        }
+        .bonus-toggles button[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+        .bonus-toggles i { width: 24px; height: 24px; display: inline-block; }
+        .settings-note { margin: 10px 0 0; font-size: 14px; color: var(--wood); }
+        @media (max-width: 500px) { .level-picker { flex-wrap: wrap; } .level-picker > span { width: 100%; } }
+
+        /* Menu (aucune partie) : seulement le choix de partie, pas d'île vide */
+        body.in-menu .arena,
+        body.in-menu #gameInfo,
+        body.in-menu .keys-hint { display: none; }
+
         #debug {
             display: none;
             margin-top: 10px;
@@ -265,7 +305,7 @@
         @media (max-width: 500px) { .lobby-slots { grid-template-columns: 1fr; } }
     </style>
 </head>
-<body>
+<body class="in-menu">
     <div class="ocean" aria-hidden="true"><div class="wave"></div><div class="wave wave2"></div></div>
 
     <main class="app">
@@ -292,6 +332,31 @@
                 <button type="button" role="radio" data-level="normal">Normal</button>
                 <button type="button" role="radio" data-level="difficile">Difficile</button>
             </div>
+            <details class="settings">
+                <summary>Réglages de la partie</summary>
+                <div class="level-picker" role="radiogroup" aria-label="Manches gagnantes" data-setting="roundsToWin">
+                    <span>Manches gagnantes :</span>
+                    <button type="button" role="radio" data-value="1">1</button>
+                    <button type="button" role="radio" data-value="2">2</button>
+                    <button type="button" role="radio" data-value="3">3</button>
+                    <button type="button" role="radio" data-value="5">5</button>
+                </div>
+                <div class="level-picker" role="radiogroup" aria-label="Marée" data-setting="tideSeconds">
+                    <span>Marée après :</span>
+                    <button type="button" role="radio" data-value="60">1 min</button>
+                    <button type="button" role="radio" data-value="90">1 min 30</button>
+                    <button type="button" role="radio" data-value="120">2 min</button>
+                </div>
+                <div class="level-picker" role="radiogroup" aria-label="Quantité de bonus" data-setting="bonusRate">
+                    <span>Bonus :</span>
+                    <button type="button" role="radio" data-value="aucun">Aucun</button>
+                    <button type="button" role="radio" data-value="peu">Peu</button>
+                    <button type="button" role="radio" data-value="normal">Normal</button>
+                    <button type="button" role="radio" data-value="beaucoup">Beaucoup</button>
+                </div>
+                <div id="bonusToggles" class="bonus-toggles" aria-label="Bonus présents dans la partie"></div>
+                <p class="settings-note">Valables en solo et pour les parties que tu crées.</p>
+            </details>
             <div class="divider">ou entre amis, jusqu'à 4</div>
             <div class="online-row">
                 <input type="text" id="roomInput" placeholder="Code de partie" autocomplete="off">
@@ -420,7 +485,9 @@
         let lastRoundKey = null;      // numéro de la manche affichée (détection de nouvelle manche)
 
         // Configuration des bonus
-        const BONUS_PROBABILITY = 0.5; // 50% de chance qu'un tonneau détruit laisse un bonus
+        // Chance qu'un tonneau détruit laisse un bonus, selon le réglage
+        // « quantité de bonus » de la partie (voir gameSettings)
+        const BONUS_RATES = { aucun: 0, peu: 0.25, normal: 0.5, beaucoup: 0.8 };
         // Les bonus restent au sol jusqu'à être ramassés ou brûlés (plus
         // d'expiration : choix de jeu classique)
 
@@ -515,6 +582,26 @@
             const saved = parseInt(localStorage.getItem('islandBomber.aiCount'), 10);
             if (saved >= 1 && saved <= 3) aiCount = saved;
         } catch (e) { /* stockage indisponible : 1 IA */ }
+        // Réglages de partie (menu « Réglages de la partie », retenus dans le
+        // navigateur). Recopiés dans le match à la création : c'est le
+        // créateur qui décide pour tout le monde.
+        const gameSettings = {
+            roundsToWin: 3,
+            tideSeconds: 90,
+            bonusRate: 'normal',
+            bonusTypes: [0, 1, 2, 3, 4, 5, 6] // BONUS_TYPES (déclarées plus bas)
+        };
+        try {
+            const saved = JSON.parse(localStorage.getItem('islandBomber.settings') || '{}');
+            if ([1, 2, 3, 5].includes(saved.roundsToWin)) gameSettings.roundsToWin = saved.roundsToWin;
+            if ([60, 90, 120].includes(saved.tideSeconds)) gameSettings.tideSeconds = saved.tideSeconds;
+            if (['aucun', 'peu', 'normal', 'beaucoup'].includes(saved.bonusRate)) gameSettings.bonusRate = saved.bonusRate;
+            if (Array.isArray(saved.bonusTypes)) gameSettings.bonusTypes = saved.bonusTypes.filter(t => t >= 0 && t <= 6);
+        } catch (e) { /* stockage indisponible : réglages par défaut */ }
+        function saveSettings() {
+            try { localStorage.setItem('islandBomber.settings', JSON.stringify(gameSettings)); } catch (e) { /* non bloquant */ }
+        }
+
         // État de décision propre à chaque IA : dernier pas (anti aller-retour)
         // et repère de debug (dernières décisions, case + action, vidées dans
         // la console à la mort d'un joueur pour comprendre comment c'est arrivé)
@@ -750,7 +837,6 @@
         // Autorité : l'hôte (player1, donc aussi l'onglet solo) décide de la
         // fin de manche et lance la suivante ; les autres ne font qu'afficher.
         const DEFAULT_ROUNDS_TO_WIN = 3;
-        const DEFAULT_ROUND_TIME = 90000;  // ms de jeu avant que la marée monte
         const TIDE_STEP_MS = 600;          // ms entre deux cases inondées sur un côté
         const TIDE_WARNING_MS = 1500;      // case qui clignote avant d'être inondée
         const ROUND_END_SETTLE = 500;      // attente avant de juger (double KO possible)
@@ -758,14 +844,30 @@
 
         // Réglages de test par l'URL du CRÉATEUR de la partie (?manches=1&maree=5),
         // recopiés dans l'état du match pour que tous les onglets les partagent
+        // Réglages choisis dans le menu par le CRÉATEUR de la partie. L'URL
+        // (tests) a priorité sur les manches et la marée.
         function matchSettingsFromUrl() {
             const params = new URLSearchParams(location.search);
             const rounds = parseInt(params.get('manches'), 10);
             const tide = parseFloat(params.get('maree'));
             return {
-                roundsToWin: rounds > 0 ? rounds : DEFAULT_ROUNDS_TO_WIN,
-                roundTime: tide >= 0 ? tide * 1000 : DEFAULT_ROUND_TIME
+                roundsToWin: rounds > 0 ? rounds : gameSettings.roundsToWin,
+                roundTime: tide >= 0 ? tide * 1000 : gameSettings.tideSeconds * 1000,
+                bonusRate: BONUS_RATES[gameSettings.bonusRate],
+                // chaîne « 0,1,2 » : un tableau vide disparaîtrait de Firebase
+                bonusTypes: gameSettings.bonusTypes.join(',')
             };
+        }
+
+        // Bonus autorisés dans la partie en cours (anciennes parties : tous)
+        function allowedBonusTypes() {
+            const m = gameState.match;
+            if (!m || typeof m.bonusTypes !== 'string') return Object.values(BONUS_TYPES);
+            return m.bonusTypes.split(',').filter(Boolean).map(Number);
+        }
+        function bonusRate() {
+            const m = gameState.match;
+            return m && typeof m.bonusRate === 'number' ? m.bonusRate : BONUS_RATES.normal;
         }
 
         function newMatch(ids, startNow) {
@@ -2061,7 +2163,7 @@
                         // si on le créait ici, checkBonusesInExplosion() pourrait le
                         // supprimer immédiatement selon le timing du round-trip
                         // Firebase (ça marchait par chance, pas par garantie).
-                        if (Math.random() < BONUS_PROBABILITY) {
+                        if (Math.random() < bonusRate() && allowedBonusTypes().length > 0) {
                             pendingBonusSpawns.push({ x: newX, y: newY });
                         }
 
@@ -2418,17 +2520,24 @@
 
         // État d'animation par joueur, calculé à partir de la position
         // AFFICHÉE (marche aussi pour l'adversaire lissé) : direction et
-        // « en marche » viennent du déplacement entre deux images.
+        // « en marche » viennent du déplacement entre deux images. L'image
+        // du cycle de marche suit la DISTANCE parcourue (et non l'horloge) :
+        // un cycle complet = WALK_CYCLE_TILES cases, quelle que soit la
+        // vitesse, sinon les jambes glissaient ou s'agitaient à contretemps.
         const playerAnim = {};
-        const WALK_FRAME_MS = 110;
+        const WALK_CYCLE_TILES = 2;
+        // Téléport (nouvelle manche, lissage rattrapé) : pas une marche
+        const WALK_MAX_STEP = TILE_SIZE;
 
         function updatePlayerAnim(playerId, x, y, now) {
             let a = playerAnim[playerId];
-            if (!a) a = playerAnim[playerId] = { x, y, dir: 'down', lastMove: 0 };
+            if (!a) a = playerAnim[playerId] = { x, y, dir: 'down', lastMove: 0, dist: 0 };
             const dx = x - a.x, dy = y - a.y;
-            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+            const step = Math.hypot(dx, dy);
+            if (step > 0.01 && step < WALK_MAX_STEP) {
                 a.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
                 a.lastMove = now;
+                a.dist += step;
             }
             a.x = x; a.y = y;
             // petit délai : pas d'arrêt visuel entre deux cases enchaînées
@@ -2439,7 +2548,9 @@
         function renderPlayerSprite(playerId, x, y, now) {
             const a = updatePlayerAnim(playerId, x, y, now);
             const count = SPRITE_ATLAS.walk[a.dir];
-            const frame = a.walking ? Math.floor(now / WALK_FRAME_MS) % count : 0;
+            const frame = a.walking
+                ? Math.floor(a.dist / (TILE_SIZE * WALK_CYCLE_TILES / count)) % count
+                : 0;
 
             // Ombre au sol : détache le personnage du sable clair
             ctx.save();
@@ -2603,10 +2714,13 @@
         // Faire apparaître un bonus
         function spawnBonus(x, y) {
             // Tirage pondéré (BONUS_WEIGHTS)
-            const total = BONUS_WEIGHTS.reduce((sum, [, w]) => sum + w, 0);
+            const allowed = allowedBonusTypes();
+            const weights = BONUS_WEIGHTS.filter(([type]) => allowed.includes(type));
+            if (weights.length === 0) return;
+            const total = weights.reduce((sum, [, w]) => sum + w, 0);
             let roll = Math.random() * total;
-            let bonusType = BONUS_TYPES.BOMB;
-            for (const [type, w] of BONUS_WEIGHTS) {
+            let bonusType = weights[0][0];
+            for (const [type, w] of weights) {
                 if ((roll -= w) < 0) { bonusType = type; break; }
             }
             
@@ -3566,6 +3680,11 @@
         // Mis à jour à chaque image, mais le DOM n'est réécrit que si
         // quelque chose a changé (stats, vivant/mort, partie en cours)
         function updateHud() {
+            const inMenu = !gameState.roomId;
+            if (document.body.classList.contains('in-menu') !== inMenu) {
+                document.body.classList.toggle('in-menu', inMenu);
+                if (!inMenu) resizeCanvas(); // le plateau vient d'apparaître : vraie taille
+            }
             const hud = document.getElementById('hud');
             // Le joueur local en premier, puis dans l'ordre des places
             const ids = gameState.roomId ? PLAYER_IDS.filter(id => gameState.players[id]).sort((a, b) =>
@@ -3690,6 +3809,41 @@
             showAiLevel();
         }));
         showAiLevel();
+
+        // Réglages de la partie : manches, marée, quantité de bonus
+        document.querySelectorAll('.settings [data-setting]').forEach(group => {
+            const key = group.dataset.setting;
+            const buttons = group.querySelectorAll('[data-value]');
+            const parse = v => (key === 'bonusRate' ? v : Number(v));
+            const show = () => buttons.forEach(b =>
+                b.setAttribute('aria-checked', String(parse(b.dataset.value) === gameSettings[key])));
+            buttons.forEach(b => b.addEventListener('click', () => {
+                gameSettings[key] = parse(b.dataset.value);
+                saveSettings();
+                show();
+            }));
+            show();
+        });
+
+        // Bonus présents : un bouton par type, activé/désactivé
+        const BONUS_NAMES = ['Bombe', 'Puissance', 'Vitesse', 'Coup de pied', 'Détonateur', 'Flamme perçante', 'Noix pourrie'];
+        const bonusToggles = document.getElementById('bonusToggles');
+        function renderBonusToggles() {
+            bonusToggles.innerHTML = BONUS_NAMES.map((name, type) =>
+                `<button type="button" data-bonus="${type}" aria-pressed="${gameSettings.bonusTypes.includes(type)}">` +
+                `<i class="sprite" style="${spriteCss(BONUS_SPRITES[type], 24)}"></i>${name}</button>`).join('');
+        }
+        bonusToggles.addEventListener('click', e => {
+            const b = e.target.closest('[data-bonus]');
+            if (!b) return;
+            const type = Number(b.dataset.bonus);
+            gameSettings.bonusTypes = gameSettings.bonusTypes.includes(type)
+                ? gameSettings.bonusTypes.filter(t => t !== type)
+                : [...gameSettings.bonusTypes, type].sort();
+            saveSettings();
+            renderBonusToggles();
+        });
+        renderBonusToggles();
 
         // Démarrer le jeu
         log("Démarrage de la boucle de jeu");

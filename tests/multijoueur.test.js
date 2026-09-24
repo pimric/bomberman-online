@@ -246,6 +246,7 @@ const gridOf = (page, id) => page.evaluate(id => {
     await scenarioQuatreJoueurs();
     await scenarioSolo();
     await scenarioSoloTroisIA();
+    await scenarioReglages();
     await scenarioMaree();
     await scenarioPouvoirs();
 
@@ -618,6 +619,43 @@ async function scenarioSoloTroisIA() {
     } finally {
         check('Aucune erreur JS (solo 3 IA)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
         P.logs.slice(0, 6).forEach(l => console.log(`   [Solo 3 IA] ${l}`));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
+}
+
+// Réglages de la partie (menu) : recopiés dans le match, et le tirage des
+// bonus ne sort que les types autorisés.
+async function scenarioReglages() {
+    const P = await openPlayer('Réglages', '');
+    let room = null;
+    try {
+        const menuOnly = await P.page.evaluate(() => getComputedStyle(document.querySelector('.arena')).display === 'none');
+        check('Menu : pas d’île vide sous le choix de partie', menuOnly);
+        await P.page.click('.settings summary');
+        await P.page.click('[data-setting="roundsToWin"] [data-value="1"]');
+        await P.page.click('[data-setting="bonusRate"] [data-value="beaucoup"]');
+        await P.page.click('[data-bonus="6"]'); // pas de noix pourrie
+        await P.page.click('[data-bonus="2"]'); // ni de vitesse
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        const m = await P.page.evaluate(() => ({ r: gameState.match.roundsToWin, rate: gameState.match.bonusRate, types: gameState.match.bonusTypes,
+            arena: getComputedStyle(document.querySelector('.arena')).display !== 'none' }));
+        check('Réglages recopiés dans le match', m.r === 1 && m.rate === 0.8 && m.types === '0,1,3,4,5', JSON.stringify(m));
+        check('Partie lancée : le plateau réapparaît', m.arena);
+        const drawn = await P.page.evaluate(async () => {
+            for (let i = 0; i < 40; i++) spawnBonus(i % 15, 7);
+            await new Promise(r => setTimeout(r, 300));
+            return [...new Set(gameState.bonuses.map(b => b.type))].sort().join(',');
+        });
+        check('Tirage des bonus limité aux types choisis', drawn.length > 0 && !drawn.split(',').some(t => t === '2' || t === '6'), `types tirés : ${drawn}`);
+        const saved = await P.page.evaluate(() => localStorage.getItem('islandBomber.settings'));
+        check('Réglages retenus dans le navigateur', saved && saved.includes('"roundsToWin":1'), saved);
+    } catch (e) {
+        check('Déroulement du scénario réglages', false, e.message);
+    } finally {
+        check('Aucune erreur JS (réglages)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
         if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
         await P.browser.close();
     }
