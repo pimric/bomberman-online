@@ -148,7 +148,7 @@
         <footer>Développé par <strong>databyric</strong></footer>
     </main>
 
-    <script src="assets/sprites.js"></script>
+    <script src="assets/sprites.js?v=3f2bdc8d90"></script>
     <script>
         // Icônes des bonus tirées de l'atlas
         document.querySelectorAll('[data-sprite]').forEach(el => {
@@ -157,7 +157,7 @@
             const size = el.getBoundingClientRect().width || 40;
             const k = size / atlas.size;
             const [x, y] = atlas.frames[el.dataset.sprite];
-            el.style.backgroundImage = 'url(assets/sprites.png)';
+            el.style.backgroundImage = `url(assets/sprites.png?v=${atlas.version || ''})`;
             el.style.backgroundSize = `${atlas.width * k}px ${atlas.height * k}px`;
             el.style.backgroundPosition = `-${x * k}px -${y * k}px`;
         });
@@ -170,7 +170,7 @@
             const ctx = canvas.getContext('2d');
             const atlas = window.SPRITE_ATLAS;
             const sheet = new Image();
-            sheet.src = 'assets/sprites.png';
+            sheet.src = 'assets/sprites.png' + (atlas && atlas.version ? '?v=' + atlas.version : '');
 
             const T = 48;                  // taille d'une case dans la scène
             const COLS = 15, ROWS = 5;     // 720 x 240

@@ -372,7 +372,9 @@
             box-shadow: 0 0 0 2px var(--sand-deep);
             cursor: pointer;
         }
-        .suit-buttons button[aria-checked="true"] { box-shadow: 0 0 0 3px var(--wood); transform: scale(1.15); }
+        .suit-buttons button[aria-checked="true"] { box-shadow: 0 0 0 3px var(--wood); transform: scale(1.2); }
+        .suit-buttons button[aria-checked="true"]::after { content: "✓"; color: #fff; font-weight: 800; font-size: 16px; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+        .suit-buttons button { display: grid; place-items: center; padding: 0; }
         .bonus-toggles {
             display: flex;
             flex-wrap: wrap;
@@ -470,7 +472,6 @@
                 <button id="resumeBtn" class="btn btn-primary btn-small" type="button">Reprendre la partie</button>
             </div>
 
-            <h3 class="menu-step">Toi</h3>
             <div class="character-picker" role="radiogroup" aria-label="Ton personnage">
                 <span id="characterName" class="character-name"></span>
                 <div id="characterButtons" class="character-buttons"></div>
@@ -600,7 +601,7 @@
     <!-- Import Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-app-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.9.0/firebase-database-compat.js"></script>
-    <script src="assets/sprites.js"></script>
+    <script src="assets/sprites.js?v=3f2bdc8d90"></script>
 
     <script>
         // Ajout d'un système de journalisation simple
@@ -3276,7 +3277,9 @@
         let spritesLoaded = false;
         spriteSheet.onload = () => { spritesLoaded = true; };
         spriteSheet.onerror = () => log('Sprites introuvables : rendu simplifié');
-        spriteSheet.src = 'assets/sprites.png';
+        // ?v= : version de l'atlas (tools/build_sprites.py), évite un vieux sprites.png en cache
+        const SPRITE_URL = 'assets/sprites.png' + (window.SPRITE_ATLAS && SPRITE_ATLAS.version ? '?v=' + SPRITE_ATLAS.version : '');
+        spriteSheet.src = SPRITE_URL;
 
         function spritesReady() {
             return spritesLoaded && window.SPRITE_ATLAS;
@@ -3984,7 +3987,10 @@
                     gameRef.update({ [`match/scores/${slot}`]: 0 });
                     // On vient de voir l'hôte : pas seul dès le départ
                     joinGame(roomId, slot, false);
-                    gameInfo.textContent = `Partie ${roomId} rejointe - ${youAreText(slot)}`;
+                    const got = gameState.players[slot] && gameState.players[slot].suit;
+                    const taken = got && got !== myColor && gameData.match && gameData.match.mode !== 'equipes'
+                        ? ` (maillot ${SUIT_COLORS[myColor].word} déjà pris : tu es en ${SUIT_COLORS[got].word}, change-le ci-dessous)` : '';
+                    gameInfo.textContent = `Partie ${roomId} rejointe - ${youAreText(slot)}${taken}`;
                 });
             });
         }
@@ -4859,7 +4865,7 @@
             if (!atlas || !atlas.frames[name]) return '';
             const k = size / atlas.size;
             const [x, y] = atlas.frames[name];
-            return `background-image:url(assets/sprites.png);` +
+            return `background-image:url(${SPRITE_URL});` +
                 `background-size:${atlas.width * k}px ${atlas.height * k}px;` +
                 `background-position:-${x * k}px -${y * k}px;`;
         }

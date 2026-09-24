@@ -8,6 +8,7 @@ quand le canvas le réduit à TILE_SIZE.
 import colorsys
 import json
 import os
+import re
 from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
@@ -322,6 +323,20 @@ def main():
     meta['walk'] = {d: len(s) for d, s in walk.items()}
     meta['animals'] = ANIMALS
     atlas.save(OUT_PNG, optimize=True)
+    # Version = empreinte de l'image : ajoutée aux URL (sprites.png?v=…,
+    # sprites.js?v=…) pour qu'un navigateur ne garde jamais un ancien atlas
+    # avec le nouveau jeu (sinon mauvais découpage, maillots qui ne
+    # changent pas de couleur…)
+    import hashlib
+    with open(OUT_PNG, 'rb') as f:
+        meta['version'] = hashlib.sha1(f.read()).hexdigest()[:10]
+    for page in ('game.html', 'index.html'):
+        path = os.path.join(ROOT, page)
+        with open(path, encoding='utf-8') as f:
+            html = f.read()
+        html = re.sub(r'assets/sprites\.js(\?v=\w+)?"', f'assets/sprites.js?v={meta["version"]}"', html)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(html)
     # .js plutôt que .json : chargé par une balise <script>, il marche aussi
     # quand le jeu est ouvert en file:// (fetch y est bloqué)
     with open(OUT_JS, 'w', encoding='utf-8') as f:

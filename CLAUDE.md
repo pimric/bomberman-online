@@ -50,6 +50,7 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 - Bonus nés d'une explosion : spawn différé (`pendingBonusSpawns`) après `checkBonusesInExplosion`.
 - Les 4 coins de départ sont des cases paires/paires, donc des palmiers par défaut : `generateMap()` doit les dégager explicitement.
 - `.btn` impose son `display` : l'attribut `hidden` ne cache pas un bouton, passer par `style.display`.
+- Cache navigateur : un vieux `sprites.png` avec un nouveau `sprites.js` découpe les mauvaises images (maillots qui ne changent plus…). `build_sprites.py` écrit `SPRITE_ATLAS.version` (empreinte du PNG) et met à jour `sprites.js?v=` dans game.html/index.html ; le PNG est chargé en `?v=` (`SPRITE_URL`). Toujours régénérer via le script.
 - En `file://`, le warning Chrome « Unsafe attempt to load URL » est bénin ; sinon servir via `python -m http.server`.
 
 ## Style et direction
