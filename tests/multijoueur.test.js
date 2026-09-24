@@ -685,6 +685,8 @@ async function scenarioReglages() {
         await P.page.click('#singlePlayerBtn');
         await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
         room = await P.page.evaluate(() => gameState.roomId);
+        // l'île réapparaît à l'image suivante (updateHud)
+        await P.page.waitForFunction(() => !document.body.classList.contains('in-menu'), { timeout: 3000 }).catch(() => {});
         const m = await P.page.evaluate(() => ({ r: gameState.match.roundsToWin, rate: gameState.match.bonusRate, types: gameState.match.bonusTypes,
             arena: getComputedStyle(document.querySelector('.arena')).display !== 'none' }));
         check('Réglages recopiés dans le match', m.r === 1 && m.rate === 0.8 && m.types === '0,1,3,4,5', JSON.stringify(m));
