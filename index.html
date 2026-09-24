@@ -97,7 +97,7 @@
         <h1 class="logo hero-title">Island Bomber</h1>
         <p class="tagline">Des bombes, du sable chaud et des tonneaux à faire sauter.</p>
 
-        <div class="scene"><canvas id="scene" width="720" height="240" aria-label="Trois vacanciers se promènent sur la plage"></canvas></div>
+        <div class="scene"><canvas id="scene" width="720" height="240" aria-label="Les vacanciers de l'île se promènent sur la plage"></canvas></div>
 
         <a href="game.html" class="btn btn-primary play">Jouer</a>
 
@@ -149,8 +149,9 @@
             el.style.backgroundPosition = `-${x * k}px -${y * k}px`;
         });
 
-        // Scène : une bande de plage (mer / sable / mer), trois vacanciers
-        // qui se promènent, une bombe qui finit par exploser de temps en temps
+        // Scène : une bande de plage (mer / sable / mer), les 7 personnages du
+        // jeu qui se promènent (maillot d'une nouvelle couleur à chaque
+        // passage), une bombe qui finit par exploser de temps en temps
         (function scene() {
             const canvas = document.getElementById('scene');
             const ctx = canvas.getContext('2d');
@@ -175,11 +176,61 @@
 
             const palms = [[2, 1], [6, 3], [11, 1], [13, 3]];
             const barrels = [[4, 1], [9, 3], [12, 2]];
+            // Maillots : mêmes teintes que SUIT_COLORS dans game.html
+            const SUITS = [['rouge', 0], ['orange', 0.07], ['jaune', 0.14], ['vert', 0.33],
+                           ['turquoise', 0.48], ['bleu', 0.61], ['violet', 0.76], ['rose', 0.92]];
+            // Personnages : animaux (maillot bleu dans l'atlas) + baigneuse (rouge)
             const walkers = [
-                { skin: 'red', row: 2, speed: 42, offset: 0 },
-                { skin: 'blue', row: 1, speed: -34, offset: 300 },
-                { skin: 'ai', row: 3, speed: 28, offset: 520 }
-            ];
+                { who: 'goeland', row: 2, speed: 42, offset: 0 },
+                { who: 'poisson', row: 1, speed: -34, offset: 120 },
+                { who: 'tortue', row: 3, speed: 28, offset: 260 },
+                { who: 'crabe', row: 1, speed: 38, offset: 430 },
+                { who: 'flamant', row: 3, speed: -31, offset: 560 },
+                { who: 'dauphin', row: 2, speed: -46, offset: 350 },
+                { who: 'baigneuse', row: 2, speed: 36, offset: 640 }
+            ].map((w, i) => ({ ...w, suit: (i * 3) % SUITS.length }));
+
+            // Maillot recoloré (même principe que tintedFrame dans game.html),
+            // mis en cache par image et par couleur
+            const tintCache = {};
+            function tinted(name, base, suitIndex) {
+                const [suit, hue] = SUITS[suitIndex];
+                if (suit === base) return null; // couleur d'origine : dessin direct
+                const key = name + '@' + suit;
+                if (key in tintCache) return tintCache[key];
+                const p = atlas.frames[name];
+                const c = document.createElement('canvas');
+                c.width = c.height = atlas.size;
+                const cx = c.getContext('2d');
+                cx.drawImage(sheet, p[0], p[1], atlas.size, atlas.size, 0, 0, atlas.size, atlas.size);
+                try {
+                    const img = cx.getImageData(0, 0, c.width, c.height);
+                    const d = img.data;
+                    const lift = suit === 'jaune' ? 1.25 : suit === 'orange' ? 1.1 : 1;
+                    for (let i = 0; i < d.length; i += 4) {
+                        if (!d[i + 3]) continue;
+                        const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+                        const max = Math.max(r, g, b), delta = max - Math.min(r, g, b);
+                        if (!delta) continue;
+                        let h = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+                        h = (h / 6 + 1) % 1;
+                        const sat = delta / max;
+                        const isSuit = sat >= 0.45 && (base === 'bleu'
+                            ? h >= 0.55 && h <= 0.72 && max >= 0.25
+                            : (h < 0.03 || h > 0.96) && max >= 0.35);
+                        if (!isSuit) continue;
+                        const v = Math.min(1, max * lift);
+                        const k = Math.floor(hue * 6), f = hue * 6 - k;
+                        const pp = v * (1 - sat), q = v * (1 - f * sat), tt = v * (1 - (1 - f) * sat);
+                        const rgb = [[v, tt, pp], [q, v, pp], [pp, v, tt], [pp, q, v], [tt, pp, v], [v, pp, q]][k % 6];
+                        d[i] = rgb[0] * 255; d[i + 1] = rgb[1] * 255; d[i + 2] = rgb[2] * 255;
+                    }
+                    cx.putImageData(img, 0, 0);
+                } catch (e) {
+                    return (tintCache[key] = null); // file:// : couleur d'origine
+                }
+                return (tintCache[key] = c);
+            }
 
             function frame(now) {
                 const t = reduced ? 0 : now / 1000;
@@ -211,20 +262,32 @@
                         draw('flame_end', bx + dx * T, by + dy * T, T + 1, T * 0.9 * grow, Math.atan2(dy, dx), alpha));
                 }
 
-                // vacanciers (triés par ligne pour le chevauchement)
-                walkers.forEach(w => {
-                    const span = canvas.width + T * 2;
-                    let x = ((w.offset + t * w.speed) % span + span) % span - T;
+                // vacanciers, du haut vers le bas (chevauchement)
+                const span = canvas.width + T * 2;
+                walkers.slice().sort((a, b) => a.row - b.row).forEach(w => {
+                    const travelled = w.offset + t * Math.abs(w.speed);
+                    const lap = Math.floor(travelled / span);
+                    const along = travelled - lap * span;
+                    const x = w.speed > 0 ? along - T : span - along - T;
                     const dir = w.speed > 0 ? 'right' : 'left';
                     const count = atlas.walk[dir];
-                    const f = reduced ? 0 : Math.floor(now / 110) % count;
+                    // image de marche selon la distance (un cycle = 2 cases)
+                    const f = reduced ? 0 : Math.floor(travelled / (T * 2 / count)) % count;
                     const cy = w.row * T + T / 2;
                     ctx.fillStyle = 'rgba(0,0,0,.22)';
                     ctx.beginPath();
                     ctx.ellipse(x, cy + T * 0.42, T * 0.28, T * 0.09, 0, 0, Math.PI * 2);
                     ctx.fill();
                     const size = T * 1.25;
-                    draw(`${w.skin}_${dir}_${f}`, x, cy + T / 2 - size / 2 + 1, size);
+                    const base = w.who === 'baigneuse' ? 'rouge' : 'bleu';
+                    const name = w.who === 'baigneuse' ? `red_${dir}_${f}` : `${w.who}_${dir}_${f}`;
+                    // nouvelle couleur de maillot à chaque tour de plage
+                    const img = tinted(name, base, (w.suit + lap) % SUITS.length);
+                    if (img) {
+                        ctx.drawImage(img, x - size / 2, cy + T / 2 - size + 1, size, size);
+                    } else {
+                        draw(name, x, cy + T / 2 - size / 2 + 1, size);
+                    }
                 });
                 palms.forEach(([x, y]) => draw('palm', x * T + T / 2, y * T + T / 2, T * 1.1));
 
