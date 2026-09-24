@@ -238,6 +238,106 @@
         }
         .character-buttons button[aria-checked="true"] { border-color: var(--wood); background-color: var(--sand); transform: scale(1.08); }
 
+        /* Commandes tactiles : cachées sauf sur écran tactile (body.touch,
+           posé au chargement, ou ?tactile=1 pour tester sur ordinateur) */
+        .touch-pad, .touch-actions { display: none; }
+        body.touch .keys-hint { display: none; }
+        body.touch .arena {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-areas: "board board" "pad act" "hud hud";
+            align-items: center;
+            justify-items: center;
+            gap: 10px;
+        }
+        body.touch .board-frame {
+            grid-area: board;
+            min-width: 0;
+            width: min(544px, calc(100vw - 24px), calc(100vh - 340px));
+        }
+        body.touch .hud {
+            grid-area: hud;
+            width: 100%;
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+        body.touch .touch-pad {
+            grid-area: pad;
+            justify-self: start;
+            display: block;
+            position: relative;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: rgba(253, 241, 211, 0.92);
+            box-shadow: 0 4px 0 var(--sand-deep), 0 8px 16px rgba(0, 40, 60, .25);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .touch-pad .arrow {
+            position: absolute;
+            font-size: 28px;
+            line-height: 1;
+            color: var(--wood);
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+        }
+        .touch-pad .up { left: 50%; top: 20%; }
+        .touch-pad .down { left: 50%; top: 80%; }
+        .touch-pad .left { left: 20%; top: 50%; }
+        .touch-pad .right { left: 80%; top: 50%; }
+        .touch-pad[data-dir="ArrowUp"] .up, .touch-pad[data-dir="ArrowDown"] .down,
+        .touch-pad[data-dir="ArrowLeft"] .left, .touch-pad[data-dir="ArrowRight"] .right {
+            color: var(--sunset-dark);
+            transform: translate(-50%, -50%) scale(1.3);
+        }
+        body.touch .touch-actions {
+            grid-area: act;
+            justify-self: end;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .touch-btn {
+            border: none;
+            border-radius: 50%;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: pointer;
+            box-shadow: 0 4px 0 var(--sunset-dark), 0 8px 16px rgba(0, 40, 60, .25);
+        }
+        .touch-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sunset-dark); }
+        .touch-btn.bomb { width: 104px; height: 104px; background: var(--sunset); display: grid; place-items: center; }
+        .touch-btn.bomb i { width: 64px; height: 64px; display: block; }
+        .touch-btn.detonate {
+            width: 64px;
+            height: 64px;
+            background: var(--sand-light);
+            color: var(--wood);
+            font-family: inherit;
+            font-weight: 800;
+            font-size: 16px;
+            box-shadow: 0 4px 0 var(--sand-deep);
+        }
+        /* Paysage : croix à gauche du plateau, boutons à droite */
+        @media (orientation: landscape) {
+            body.touch .arena {
+                grid-template-columns: auto auto auto;
+                grid-template-areas: "pad board act" "hud hud hud";
+            }
+            body.touch .touch-pad, body.touch .touch-actions { justify-self: center; }
+            body.touch .touch-actions { flex-direction: column-reverse; }
+            body.touch .board-frame { width: min(544px, calc(100vh - 110px), calc(100vw - 400px)); }
+            /* en-tête compact : la hauteur manque (l'écran de fin reprend le message) */
+            body.touch:not(.in-menu) .app { gap: 8px; padding-top: 8px; }
+            body.touch:not(.in-menu) .topbar .logo { font-size: 24px; }
+            body.touch:not(.in-menu) #gameInfo { display: none; }
+        }
+
         /* Réglages de la partie (menu) */
         .menu-step {
             margin: 18px 0 4px;
@@ -444,6 +544,15 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <!-- Commandes tactiles (écrans tactiles seulement, body.touch) -->
+            <div id="touchPad" class="touch-pad" aria-label="Croix directionnelle">
+                <span class="arrow up">▲</span><span class="arrow left">◀</span>
+                <span class="arrow right">▶</span><span class="arrow down">▼</span>
+            </div>
+            <div class="touch-actions">
+                <button id="touchDetonate" class="touch-btn detonate" type="button" style="display: none;" aria-label="Déclencher les bombes">Boum</button>
+                <button id="touchBomb" class="touch-btn bomb" type="button" aria-label="Poser une bombe"><i class="sprite"></i></button>
             </div>
         </div>
 
@@ -4468,6 +4577,7 @@
             detectEvents(Date.now());
             render();
             updateHud();
+            updateTouchControls();
             requestAnimationFrame(gameLoop);
         }
 
@@ -4588,6 +4698,72 @@
             renderBonusToggles();
         });
         renderBonusToggles();
+
+        //--------------------------------------------------
+        // COMMANDES TACTILES : croix + bouton bombe (+ détonateur)
+        //--------------------------------------------------
+        // Affichées sur écran tactile (pointeur « grossier ») ou avec
+        // ?tactile=1. Elles écrivent dans gameState.keys comme le clavier :
+        // update() ne fait aucune différence.
+        const touchMode = matchMedia('(pointer: coarse)').matches || new URLSearchParams(location.search).has('tactile');
+        document.body.classList.toggle('touch', touchMode);
+        if (touchMode) resizeCanvas();
+
+        const touchPad = document.getElementById('touchPad');
+        const PAD_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+        let padPointer = null;
+        function setPadKey(key) {
+            PAD_KEYS.forEach(k => { gameState.keys[k] = k === key; });
+            touchPad.dataset.dir = key || '';
+        }
+        // Direction = axe dominant entre le doigt et le centre de la croix ;
+        // on peut glisser d'une flèche à l'autre sans lever le doigt
+        function padDirection(e) {
+            const r = touchPad.getBoundingClientRect();
+            const dx = e.clientX - (r.left + r.width / 2);
+            const dy = e.clientY - (r.top + r.height / 2);
+            if (Math.hypot(dx, dy) < r.width * 0.12) return null; // zone morte au centre
+            return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'ArrowRight' : 'ArrowLeft') : (dy > 0 ? 'ArrowDown' : 'ArrowUp');
+        }
+        touchPad.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            unlockAudio();
+            padPointer = e.pointerId;
+            touchPad.setPointerCapture(e.pointerId);
+            setPadKey(padDirection(e));
+        });
+        touchPad.addEventListener('pointermove', e => {
+            if (e.pointerId === padPointer) setPadKey(padDirection(e));
+        });
+        ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(type => touchPad.addEventListener(type, e => {
+            if (e.pointerId !== padPointer) return;
+            padPointer = null;
+            setPadKey(null);
+        }));
+
+        const touchBomb = document.getElementById('touchBomb');
+        touchBomb.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            unlockAudio();
+            if (!gameState.gameStarted) return;
+            placeBomb();
+            if (navigator.vibrate) navigator.vibrate(15);
+        });
+        const touchDetonate = document.getElementById('touchDetonate');
+        touchDetonate.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            const me = gameState.players[gameState.playerId];
+            if (gameState.gameStarted && me && me.alive && !countdownActive()) detonateRemoteBombs();
+        });
+        // Icône de bombe (atlas) et bouton détonateur selon le bonus ramassé
+        function updateTouchControls() {
+            if (!touchMode) return;
+            const icon = touchBomb.querySelector('i');
+            if (!icon.style.backgroundImage && window.SPRITE_ATLAS) icon.style.cssText = spriteCss('bomb', 64);
+            const me = gameState.players[gameState.playerId];
+            const show = me && me.alive && me.hasDetonator ? '' : 'none';
+            if (touchDetonate.style.display !== show) touchDetonate.style.display = show;
+        }
 
         // Démarrer le jeu
         log("Démarrage de la boucle de jeu");

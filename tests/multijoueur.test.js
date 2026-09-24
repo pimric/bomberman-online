@@ -249,6 +249,7 @@ const gridOf = (page, id) => page.evaluate(id => {
     await scenarioReglages();
     await scenarioCartes();
     await scenarioEquipes();
+    await scenarioTactile();
     await scenarioMaree();
     await scenarioPouvoirs();
 
@@ -839,6 +840,68 @@ async function scenarioEquipes() {
         check('Déroulement du scénario équipes', false, e.message);
     } finally {
         check('Aucune erreur JS (équipes)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
+}
+
+// Commandes tactiles (?tactile=1) : glisser sur la croix fait marcher, le
+// bouton pose une bombe ; sans le paramètre (ordinateur), rien n'apparaît.
+async function scenarioTactile() {
+    const D = await openPlayer('Ordinateur', '');
+    try {
+        await D.page.click('#singlePlayerBtn');
+        await D.page.waitForFunction(() => gameState.gameStarted, { timeout: 10000 });
+        const hidden = await D.page.evaluate(() => getComputedStyle(document.getElementById('touchPad')).display === 'none' &&
+            !document.body.classList.contains('touch'));
+        check('Tactile : commandes cachées sur ordinateur', hidden);
+        const room = await D.page.evaluate(() => gameState.roomId);
+        await D.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+    } catch (e) {
+        check('Déroulement du scénario ordinateur', false, e.message);
+    } finally {
+        await D.browser.close();
+    }
+
+    const P = await openPlayer('Tactile', '?tactile=1&maree=600');
+    let room = null;
+    try {
+        await P.page.setViewport({ width: 390, height: 844 });
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+        await P.page.evaluate(() => stopAI());
+        const layout = await P.page.evaluate(() => {
+            const r = id => document.getElementById(id).getBoundingClientRect();
+            const board = document.querySelector('.board-frame').getBoundingClientRect();
+            return { board: board.bottom, pad: r('touchPad').top, bomb: r('touchBomb').top,
+                fits: r('touchPad').bottom <= innerHeight && r('touchBomb').bottom <= innerHeight && board.right <= innerWidth };
+        });
+        check('Tactile : croix et bouton sous le plateau, dans l’écran', layout.pad >= layout.board && layout.fits, JSON.stringify(layout));
+
+        const dir = await P.page.evaluate(() => isGridAccessible(1, 0) ? 'right' : 'down');
+        const pad = await (await P.page.$('#touchPad')).boundingBox();
+        const cx = pad.x + pad.width / 2, cy = pad.y + pad.height / 2;
+        await P.page.mouse.move(cx, cy);
+        await P.page.mouse.down();
+        await P.page.mouse.move(dir === 'right' ? cx + 55 : cx, dir === 'right' ? cy : cy + 55, { steps: 3 });
+        await sleep(150);
+        await P.page.mouse.up();
+        await sleep(400);
+        const g = await gridOf(P.page, 'player1');
+        const keysReleased = await P.page.evaluate(() => !gameState.keys.ArrowRight && !gameState.keys.ArrowDown);
+        check('Tactile : la croix fait avancer d’une case, puis s’arrête', (g.x === 1 || g.y === 1) && keysReleased,
+            `position=(${g.x},${g.y}) touches relâchées=${keysReleased}`);
+
+        await P.page.click('#touchBomb');
+        await P.page.waitForFunction(() => gameState.bombs.some(b => b.playerId === 'player1'), { timeout: 2000 })
+            .then(() => check('Tactile : le bouton pose une bombe', true))
+            .catch(() => check('Tactile : le bouton pose une bombe', false));
+    } catch (e) {
+        check('Déroulement du scénario tactile', false, e.message);
+    } finally {
+        check('Aucune erreur JS (tactile)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
         if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
         await P.browser.close();
     }
