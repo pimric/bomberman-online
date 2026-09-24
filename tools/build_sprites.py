@@ -293,15 +293,12 @@ def main():
     for theme in MAP_KINDS:
         sprites.update(map_sheet(theme))
 
-    # Baigneuse (planche d'origine, maillot rouge) : une variante par couleur
+    # Baigneuse (planche d'origine) : maillot ROUGE seulement, le jeu le
+    # recolore à la volée comme pour les animaux
     walk = walk_cycle(os.path.join(SRC, 'personnage.png'))
-    skins = {'red': None}
-    for color, hue in SUIT_HUES.items():
-        skins[color] = swimsuit_to(hue)
-    for skin, rule in skins.items():
-        for direction, seq in walk.items():
-            for i, f in enumerate(seq):
-                sprites[f'{skin}_{direction}_{i}'] = recolor(f, rule) if rule else f
+    for direction, seq in walk.items():
+        for i, f in enumerate(seq):
+            sprites[f'red_{direction}_{i}'] = f
 
     # Animaux (planches perso_<animal>.jpg, maillot BLEU) : une seule
     # version dans l'atlas ; le jeu recolore le maillot à la volée pour

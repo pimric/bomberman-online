@@ -239,14 +239,25 @@
         .character-buttons button[aria-checked="true"] { border-color: var(--wood); background-color: var(--sand); transform: scale(1.08); }
 
         /* Réglages de la partie (menu) */
-        .settings { margin-top: 14px; text-align: center; }
-        .settings summary {
-            cursor: pointer;
-            font-weight: 800;
+        .menu-step {
+            margin: 18px 0 4px;
+            font-family: 'Pacifico', cursive;
+            font-weight: 400;
+            font-size: 20px;
             color: var(--wood);
-            list-style-position: inside;
         }
-        .settings .level-picker { flex-wrap: wrap; }
+        #roomControls .level-picker { flex-wrap: wrap; margin-top: 8px; }
+        .menu-launch { margin-top: 20px; padding-top: 16px; border-top: 2px dashed var(--sand-deep); }
+        .suit-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 10px; }
+        .suit-buttons button {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 2px var(--sand-deep);
+            cursor: pointer;
+        }
+        .suit-buttons button[aria-checked="true"] { box-shadow: 0 0 0 3px var(--wood); transform: scale(1.15); }
         .bonus-toggles {
             display: flex;
             flex-wrap: wrap;
@@ -334,65 +345,78 @@
 
         <section id="roomControls" class="card">
             <h2 class="card-title">Choisis ta partie</h2>
+
+            <h3 class="menu-step">Toi</h3>
             <div class="character-picker" role="radiogroup" aria-label="Ton personnage">
                 <span id="characterName" class="character-name"></span>
                 <div id="characterButtons" class="character-buttons"></div>
             </div>
-            <button id="singlePlayerBtn" class="btn btn-primary btn-big solo-btn">Jouer contre l'IA</button>
-            <div class="level-picker" role="radiogroup" aria-label="Nombre d'IA">
-                <span>Adversaires :</span>
+            <div id="suitButtons" class="suit-buttons" role="radiogroup" aria-label="Couleur du maillot"></div>
+
+            <h3 class="menu-step">La partie</h3>
+            <div class="level-picker" role="radiogroup" aria-label="Mode de jeu" data-setting="mode">
+                <span>Mode :</span>
+                <button type="button" role="radio" data-value="libre">Chacun pour soi</button>
+                <button type="button" role="radio" data-value="equipes">Équipes 2 contre 2</button>
+            </div>
+            <div class="level-picker" role="radiogroup" aria-label="Carte" data-setting="map">
+                <span>Carte :</span>
+                <button type="button" role="radio" data-value="plage">Plage</button>
+                <button type="button" role="radio" data-value="lagon">Lagon</button>
+                <button type="button" role="radio" data-value="volcan">Volcan</button>
+                <button type="button" role="radio" data-value="jungle">Jungle</button>
+                <button type="button" role="radio" data-value="ponton">Ponton</button>
+                <button type="button" role="radio" data-value="grotte">Grotte</button>
+                <button type="button" role="radio" data-value="tempete">Tempête</button>
+                <button type="button" role="radio" data-value="aleatoire">Aléatoire</button>
+            </div>
+            <p id="mapDesc" class="settings-note"></p>
+            <div class="level-picker" role="radiogroup" aria-label="Manches gagnantes" data-setting="roundsToWin">
+                <span>Manches gagnantes :</span>
+                <button type="button" role="radio" data-value="1">1</button>
+                <button type="button" role="radio" data-value="2">2</button>
+                <button type="button" role="radio" data-value="3">3</button>
+                <button type="button" role="radio" data-value="5">5</button>
+            </div>
+            <div class="level-picker" role="radiogroup" aria-label="Marée" data-setting="tideSeconds">
+                <span>Marée après :</span>
+                <button type="button" role="radio" data-value="60">1 min</button>
+                <button type="button" role="radio" data-value="90">1 min 30</button>
+                <button type="button" role="radio" data-value="120">2 min</button>
+            </div>
+            <div class="level-picker" role="radiogroup" aria-label="Quantité de bonus" data-setting="bonusRate">
+                <span>Bonus :</span>
+                <button type="button" role="radio" data-value="aucun">Aucun</button>
+                <button type="button" role="radio" data-value="peu">Peu</button>
+                <button type="button" role="radio" data-value="normal">Normal</button>
+                <button type="button" role="radio" data-value="beaucoup">Beaucoup</button>
+            </div>
+            <div id="bonusToggles" class="bonus-toggles" aria-label="Bonus présents dans la partie"></div>
+
+            <h3 class="menu-step">Les IA</h3>
+            <div id="aiCountPicker" class="level-picker" role="radiogroup" aria-label="Nombre d'IA">
+                <span>Adversaires en solo :</span>
                 <button type="button" role="radio" data-ai-count="1">1</button>
                 <button type="button" role="radio" data-ai-count="2">2</button>
                 <button type="button" role="radio" data-ai-count="3">3</button>
             </div>
+            <p id="teamSoloNote" class="settings-note" style="display: none;">En équipes, tu joues avec une IA contre deux IA.</p>
             <div class="level-picker" role="radiogroup" aria-label="Niveau de l'IA">
                 <span>Niveau :</span>
                 <button type="button" role="radio" data-level="facile">Facile</button>
                 <button type="button" role="radio" data-level="normal">Normal</button>
                 <button type="button" role="radio" data-level="difficile">Difficile</button>
             </div>
-            <details class="settings">
-                <summary>Réglages de la partie</summary>
-                <div class="level-picker" role="radiogroup" aria-label="Carte" data-setting="map">
-                    <span>Carte :</span>
-                    <button type="button" role="radio" data-value="plage">Plage</button>
-                    <button type="button" role="radio" data-value="lagon">Lagon</button>
-                    <button type="button" role="radio" data-value="volcan">Volcan</button>
-                    <button type="button" role="radio" data-value="jungle">Jungle</button>
-                    <button type="button" role="radio" data-value="ponton">Ponton</button>
-                    <button type="button" role="radio" data-value="grotte">Grotte</button>
-                    <button type="button" role="radio" data-value="tempete">Tempête</button>
-                    <button type="button" role="radio" data-value="aleatoire">Aléatoire</button>
+
+            <div class="menu-launch">
+                <button id="singlePlayerBtn" class="btn btn-primary btn-big solo-btn">Jouer contre l'IA</button>
+                <div class="divider">ou entre amis, jusqu'à 4</div>
+                <div class="online-row">
+                    <input type="text" id="roomInput" placeholder="Code de partie" autocomplete="off">
+                    <button id="createBtn" class="btn">Créer</button>
+                    <button id="joinBtn" class="btn btn-secondary">Rejoindre</button>
                 </div>
-                <p id="mapDesc" class="settings-note"></p>
-                <div class="level-picker" role="radiogroup" aria-label="Manches gagnantes" data-setting="roundsToWin">
-                    <span>Manches gagnantes :</span>
-                    <button type="button" role="radio" data-value="1">1</button>
-                    <button type="button" role="radio" data-value="2">2</button>
-                    <button type="button" role="radio" data-value="3">3</button>
-                    <button type="button" role="radio" data-value="5">5</button>
-                </div>
-                <div class="level-picker" role="radiogroup" aria-label="Marée" data-setting="tideSeconds">
-                    <span>Marée après :</span>
-                    <button type="button" role="radio" data-value="60">1 min</button>
-                    <button type="button" role="radio" data-value="90">1 min 30</button>
-                    <button type="button" role="radio" data-value="120">2 min</button>
-                </div>
-                <div class="level-picker" role="radiogroup" aria-label="Quantité de bonus" data-setting="bonusRate">
-                    <span>Bonus :</span>
-                    <button type="button" role="radio" data-value="aucun">Aucun</button>
-                    <button type="button" role="radio" data-value="peu">Peu</button>
-                    <button type="button" role="radio" data-value="normal">Normal</button>
-                    <button type="button" role="radio" data-value="beaucoup">Beaucoup</button>
-                </div>
-                <div id="bonusToggles" class="bonus-toggles" aria-label="Bonus présents dans la partie"></div>
-                <p class="settings-note">Valables en solo et pour les parties que tu crées.</p>
-            </details>
-            <div class="divider">ou entre amis, jusqu'à 4</div>
-            <div class="online-row">
-                <input type="text" id="roomInput" placeholder="Code de partie" autocomplete="off">
-                <button id="createBtn" class="btn">Créer</button>
-                <button id="joinBtn" class="btn btn-secondary">Rejoindre</button>
+                <p class="settings-note">Tes réglages s'appliquent en solo et aux parties que tu crées.</p>
             </div>
         </section>
 
@@ -630,6 +654,41 @@
             if (CHARACTERS[saved]) myCharacter = saved;
         } catch (e) { /* stockage indisponible : goéland */ }
 
+        // Couleurs de maillot au choix. hue = teinte HSV appliquée aux pixels
+        // du maillot (tintedFrame) ; word/fem : « joueur vert », « IA verte ».
+        const SUIT_COLORS = {
+            rouge:     { hue: 0.00, css: '#e0453a', word: 'rouge', fem: 'rouge' },
+            orange:    { hue: 0.07, css: '#f08a24', word: 'orange', fem: 'orange' },
+            jaune:     { hue: 0.14, css: '#e0a810', word: 'jaune', fem: 'jaune' },
+            vert:      { hue: 0.33, css: '#3fae45', word: 'vert', fem: 'verte' },
+            turquoise: { hue: 0.48, css: '#1fb0a8', word: 'turquoise', fem: 'turquoise' },
+            bleu:      { hue: 0.61, css: '#2f86d6', word: 'bleu', fem: 'bleue' },
+            violet:    { hue: 0.76, css: '#8a4fd8', word: 'violet', fem: 'violette' },
+            rose:      { hue: 0.92, css: '#e2508f', word: 'rose', fem: 'rose' }
+        };
+        const SUIT_IDS = Object.keys(SUIT_COLORS);
+        let myColor = 'rouge';
+        try {
+            const saved = localStorage.getItem('islandBomber.suit');
+            if (SUIT_COLORS[saved]) myColor = saved;
+        } catch (e) { /* stockage indisponible : rouge */ }
+
+        // Chacun pour soi : pas deux fois la même couleur. La couleur voulue
+        // si elle est libre, sinon la première libre (SUIT_AUTO_ORDER).
+        // Ordre d'attribution automatique : couleurs bien distinctes d'abord
+        const SUIT_AUTO_ORDER = ['rouge', 'bleu', 'vert', 'jaune', 'violet', 'orange', 'turquoise', 'rose'];
+        function freeSuit(wanted, taken) {
+            if (wanted && !taken.includes(wanted)) return wanted;
+            return SUIT_AUTO_ORDER.find(c => !taken.includes(c)) || wanted || 'rouge';
+        }
+
+        // Équipes 2 contre 2 : places 1 et 3 (en haut) contre 2 et 4 (en bas).
+        // Équipe A = couleur de l'hôte, équipe B = bleu (ou rouge si l'hôte est en bleu).
+        const TEAM_OF = { player1: 'A', player3: 'A', player2: 'B', player4: 'B' };
+        function teamColorsFor(hostSuit) {
+            return { A: hostSuit, B: hostSuit === 'bleu' ? 'rouge' : 'bleu' };
+        }
+
         // Animal d'une IA : au hasard, en évitant ceux déjà pris si possible
         function pickAiCharacter(used) {
             const free = ANIMALS.filter(a => !used.includes(a));
@@ -645,7 +704,8 @@
             tideSeconds: 90,
             bonusRate: 'normal',
             bonusTypes: [0, 1, 2, 3, 4, 5, 6], // BONUS_TYPES (déclarées plus bas)
-            map: 'plage'                       // THEMES ou 'aleatoire'
+            map: 'plage',                      // THEMES ou 'aleatoire'
+            mode: 'libre'                      // 'libre' ou 'equipes'
         };
         try {
             const saved = JSON.parse(localStorage.getItem('islandBomber.settings') || '{}');
@@ -655,6 +715,7 @@
             if (Array.isArray(saved.bonusTypes)) gameSettings.bonusTypes = saved.bonusTypes.filter(t => t >= 0 && t <= 6);
             // liste en dur : THEMES est déclaré plus bas
             if (['plage', 'lagon', 'volcan', 'jungle', 'ponton', 'grotte', 'tempete', 'aleatoire'].includes(saved.map)) gameSettings.map = saved.map;
+            if (['libre', 'equipes'].includes(saved.mode)) gameSettings.mode = saved.mode;
         } catch (e) { /* stockage indisponible : réglages par défaut */ }
         function saveSettings() {
             try { localStorage.setItem('islandBomber.settings', JSON.stringify(gameSettings)); } catch (e) { /* non bloquant */ }
@@ -920,6 +981,10 @@
                 // carte choisie (« aleatoire » : tirée à chaque manche) et
                 // thème de la manche en cours
                 mapChoice: params.get('carte') || gameSettings.map,
+                // chacun pour soi ou équipes 2 contre 2 (couleurs d'équipe
+                // tirées du maillot du créateur)
+                mode: params.get('mode') || gameSettings.mode,
+                teamColors: teamColorsFor(myColor),
                 theme: pickTheme(params.get('carte') || gameSettings.map),
                 // chaîne « 0,1,2 » : un tableau vide disparaîtrait de Firebase
                 bonusTypes: gameSettings.bonusTypes.join(',')
@@ -959,26 +1024,61 @@
             return Date.now() + serverOffset;
         }
 
-        // Les 4 places : coin de départ, couleur (rendu sans sprites), tenue,
-        // libellés. player1 = l'hôte (toujours humain) ; player2 part du coin
-        // opposé pour qu'un duel reste équitable, player3/4 des deux autres.
+        // Les 4 places (coins de départ). player1 = l'hôte (toujours humain) ;
+        // player2 part du coin opposé pour qu'un duel reste équitable. La
+        // couleur ne dépend pas de la place : c'est le maillot choisi (suit).
         const PLAYER_SLOTS = {
-            player1: { x: 0, y: 0, color: '#ff6b6b', skin: 'red', word: 'rouge', ai: 'IA rouge', accent: 'var(--red)' },
-            player2: { x: GRID_SIZE - 1, y: GRID_SIZE - 1, color: '#4ecdc4', skin: 'blue', word: 'bleu', ai: 'IA bleue', accent: 'var(--blue)' },
-            player3: { x: GRID_SIZE - 1, y: 0, color: '#5cc85a', skin: 'green', word: 'vert', ai: 'IA verte', accent: 'var(--green)' },
-            player4: { x: 0, y: GRID_SIZE - 1, color: '#f2c230', skin: 'yellow', word: 'jaune', ai: 'IA jaune', accent: 'var(--yellow)' }
+            player1: { x: 0, y: 0 },
+            player2: { x: GRID_SIZE - 1, y: GRID_SIZE - 1 },
+            player3: { x: GRID_SIZE - 1, y: 0 },
+            player4: { x: 0, y: GRID_SIZE - 1 }
         };
         const PLAYER_IDS = Object.keys(PLAYER_SLOTS);
-        // character : personnage (CHARACTERS) ; par défaut celui choisi dans
-        // le menu pour un humain, un animal au hasard pour une IA
-        function spawnPlayer(id, ai = false, character = null) {
+        // character : personnage (CHARACTERS), par défaut celui du menu pour
+        // un humain, un animal au hasard pour une IA. suit : couleur du
+        // maillot (SUIT_COLORS), décidée par l'appelant (freeSuit, équipes).
+        function spawnPlayer(id, ai = false, character = null, suit = myColor) {
             const slot = PLAYER_SLOTS[id];
-            const player = createPlayer(slot.x, slot.y, slot.color);
+            const player = createPlayer(slot.x, slot.y, SUIT_COLORS[suit].css);
             if (ai) player.ai = true;
+            player.suit = suit;
             player.character = character || (ai
                 ? pickAiCharacter(Object.values(gameState.players).map(p => p && p.character))
                 : myCharacter);
             return player;
+        }
+
+        // Couleur d'un nouveau joueur sur la place id, vu l'état de la partie
+        // (match + joueurs déjà là) : couleur d'équipe, ou couleur libre
+        function suitForSlot(id, match, players, wanted) {
+            if (match && match.mode === 'equipes' && match.teamColors) return match.teamColors[TEAM_OF[id]];
+            const taken = Object.keys(players || {}).filter(o => o !== id).map(o => players[o] && players[o].suit);
+            return freeSuit(wanted, taken);
+        }
+
+        // Mode équipes
+        function teamMode() {
+            return !!(gameState.match && gameState.match.mode === 'equipes');
+        }
+        function teamOf(id) {
+            return teamMode() ? TEAM_OF[id] : null;
+        }
+        function isEnemy(id, otherId) {
+            return otherId !== id && (!teamMode() || TEAM_OF[otherId] !== TEAM_OF[id]);
+        }
+        function teamName(team) {
+            const m = gameState.match;
+            const suit = m && m.teamColors ? SUIT_COLORS[m.teamColors[team]] : null;
+            return 'équipe ' + (suit ? suit.fem : team);
+        }
+        // Manche jouée tant que les vivants sont d'au moins 2 camps
+        function roundDecided(aliveIds) {
+            if (!teamMode()) return aliveIds.length <= 1;
+            return new Set(aliveIds.map(id => TEAM_OF[id])).size <= 1;
+        }
+        // Le gagnant w (joueur, ou équipe en mode équipes) est-il de mon côté ?
+        function iWon(w) {
+            return !!w && (teamMode() ? w === teamOf(gameState.playerId) : w === gameState.playerId);
         }
 
         // Ordre d'inondation : anneau par anneau depuis le bord. Dans un
@@ -1025,12 +1125,20 @@
         function presentIds() {
             return matchIds().filter(id => gameState.players[id]);
         }
-        // « Joueur bleu », « IA verte », ou « L'IA » quand elle est seule
+        function suitOf(id) {
+            const p = gameState.players[id];
+            return SUIT_COLORS[p && p.suit] ? p.suit : 'rouge';
+        }
+        // « Joueur bleu », « IA verte », ou « L'IA » quand elle est seule.
+        // Même maillot (équipes) : numéro de la place pour les distinguer.
         function nameOf(id) {
-            const slot = PLAYER_SLOTS[id];
-            if (!slot) return id;
-            if (!isAi(id)) return 'Joueur ' + slot.word;
-            return aiIds().length === 1 ? "L'IA" : slot.ai;
+            if (!PLAYER_SLOTS[id]) return id;
+            const suit = SUIT_COLORS[suitOf(id)];
+            if (isAi(id) && aiIds().length === 1) return "L'IA";
+            const name = isAi(id) ? 'IA ' + suit.fem : 'Joueur ' + suit.word;
+            const twin = Object.keys(gameState.players).some(o => o !== id && gameState.players[o] &&
+                suitOf(o) === suitOf(id) && isAi(o) === isAi(id));
+            return twin ? `${name} ${id.slice(-1)}` : name;
         }
         // Sujet d'une phrase : « Le joueur bleu », « L'IA verte »
         function subjectOf(id) {
@@ -1043,12 +1151,16 @@
         function scoreText(m) {
             const me = gameState.playerId;
             const ids = presentIds();
+            if (teamMode()) {
+                const other = Math.max(0, ...ids.filter(id => isEnemy(me, id)).map(id => m.scores[id] || 0));
+                return `${m.scores[me] || 0} à ${other}`;
+            }
             if (ids.length === 2 && ids.includes(me)) {
                 return `${m.scores[me] || 0} à ${m.scores[ids.find(id => id !== me)] || 0}`;
             }
             return ids.slice()
                 .sort((a, b) => (m.scores[b] || 0) - (m.scores[a] || 0))
-                .map(id => `${id === me ? 'vous' : (isAi(id) ? nameOf(id).replace("L'IA", 'IA') : PLAYER_SLOTS[id].word)} ${m.scores[id] || 0}`)
+                .map(id => `${id === me ? 'vous' : (isAi(id) ? nameOf(id).replace("L'IA", 'IA') : SUIT_COLORS[suitOf(id)].word)} ${m.scores[id] || 0}`)
                 .join(', ');
         }
         // Score en fin de phrase : « … gagné 2 à 1 ! » / « … gagné (vous 3, bleu 1) ! »
@@ -1059,6 +1171,10 @@
 
         function matchEndMessage(m) {
             const w = m.matchWinner;
+            if (teamMode()) {
+                return iWon(w) ? `Victoire - Votre équipe a gagné${scoreSuffix(m)} !`
+                    : `Défaite - L'${teamName(w)} a gagné${scoreSuffix(m)} !`;
+            }
             if (w === gameState.playerId) {
                 if (soloMode) return `Victoire - Vous avez battu ${aiIds().length > 1 ? 'les IA' : "l'IA"}${scoreSuffix(m)} !`;
                 return `Victoire - Vous avez gagné${scoreSuffix(m)} !`;
@@ -1067,8 +1183,8 @@
         }
         function roundEndMessage(m) {
             if (!m.lastWinner) return `Égalité - personne ne marque (${scoreText(m)})`;
-            if (m.lastWinner === gameState.playerId) return `Manche gagnée - ${scoreText(m)}`;
-            if (presentIds().length === 2) return `Manche perdue - ${scoreText(m)}`;
+            if (iWon(m.lastWinner)) return `Manche gagnée - ${scoreText(m)}`;
+            if (teamMode() || presentIds().length === 2) return `Manche perdue - ${scoreText(m)}`;
             return `Manche perdue - ${subjectOf(m.lastWinner)} marque (${scoreText(m)})`;
         }
 
@@ -1087,7 +1203,8 @@
             // quitté (onDisconnect). On continue sans lui, sauf si l'hôte est
             // parti (plus personne pour juger les manches ni simuler les IA)
             // ou s'il ne reste qu'un joueur.
-            if (!soloMode && (!gameState.players.player1 || present.length < 2)) {
+            const camps = teamMode() ? new Set(present.map(id => TEAM_OF[id])).size : present.length;
+            if (!soloMode && (!gameState.players.player1 || camps < 2)) {
                 gameInfo.textContent = !gameState.players.player1 ? `L'hôte a quitté la partie`
                     : ids.length === 2 ? `L'adversaire a quitté la partie` : `Tous les adversaires ont quitté la partie`;
                 endScreen.style.display = 'block';
@@ -1104,7 +1221,7 @@
             }
 
             const alive = present.filter(id => gameState.players[id].alive);
-            if (alive.length <= 1 && isHost() && !roundEndTimer) {
+            if (roundDecided(alive) && isHost() && !roundEndTimer) {
                 // Petit délai : plusieurs joueurs pris dans la même explosion
                 // meurent à quelques ms d'écart (chacun dans son onglet)
                 roundEndTimer = setTimeout(finishRound, ROUND_END_SETTLE);
@@ -1118,12 +1235,22 @@
             const m = gameState.match;
             if (!m || m.roundOver || m.matchWinner) return;
             const alive = presentIds().filter(id => gameState.players[id].alive);
-            if (alive.length > 1) return;
+            if (!roundDecided(alive)) return;
 
-            const winner = alive.length === 1 ? alive[0] : null;
+            // Gagnant : le survivant, ou en équipes l'équipe survivante (ses
+            // deux membres marquent, même le mort)
             const scores = { ...m.scores };
-            if (winner) scores[winner] = (scores[winner] || 0) + 1;
-            const matchWinner = winner && scores[winner] >= m.roundsToWin ? winner : null;
+            let winner = null;
+            let scorers = [];
+            if (teamMode()) {
+                winner = alive.length > 0 ? TEAM_OF[alive[0]] : null;
+                scorers = winner ? presentIds().filter(id => TEAM_OF[id] === winner) : [];
+            } else if (alive.length === 1) {
+                winner = alive[0];
+                scorers = [winner];
+            }
+            scorers.forEach(id => { scores[id] = (scores[id] || 0) + 1; });
+            const matchWinner = winner && scorers.some(id => scores[id] >= m.roundsToWin) ? winner : null;
             log(`Fin de manche ${m.round} : ${winner || 'égalité'} - scores ${JSON.stringify(scores)}`);
 
             const roomId = gameState.roomId;
@@ -1145,7 +1272,7 @@
             const players = {};
             const scores = {};
             ids.forEach(id => {
-                players[id] = spawnPlayer(id, isAi(id), gameState.players[id].character);
+                players[id] = spawnPlayer(id, isAi(id), gameState.players[id].character, suitOf(id));
                 scores[id] = resetScores ? 0 : (m.scores[id] || 0);
             });
             database.ref(`games/${gameState.roomId}`).update({
@@ -1274,17 +1401,24 @@
                     }
                 }
             } else if (theme === 'lagon') {
-                // courants : bouts de couloir (lignes/colonnes impaires, sans
-                // palmier) de 4 cases, dans un sens au hasard
-                for (let n = 0, tries = 0; n < 5 && tries < 50; tries++) {
+                // Rivières : bandes de 3 couloirs de large (ligne impaire, la
+                // paire entre deux palmiers, puis impaire) sur 7 à 9 cases,
+                // toutes dans le même sens. 3 rivières, qui ne se croisent pas.
+                for (let n = 0, tries = 0; n < 3 && tries < 80; tries++) {
                     const horizontal = Math.random() < 0.5;
-                    const line = 1 + 2 * Math.floor(Math.random() * ((GRID_SIZE - 1) / 2));
-                    const start = 1 + Math.floor(Math.random() * (GRID_SIZE - 6));
-                    const run = [];
-                    for (let k = 0; k < 4; k++) run.push(horizontal ? [start + k, line] : [line, start + k]);
-                    if (run.some(([x, y]) => nearCorner(x, y) || features[featKey(x, y)])) continue;
+                    const first = 1 + 2 * Math.floor(Math.random() * ((GRID_SIZE - 3) / 2)); // 1, 3, … 11
+                    const length = 7 + Math.floor(Math.random() * 3);
+                    const start = 1 + Math.floor(Math.random() * (GRID_SIZE - length - 1));
+                    const band = [];
+                    for (let w = 0; w < 3; w++) {
+                        for (let k = 0; k < length; k++) {
+                            const [x, y] = horizontal ? [start + k, first + w] : [first + w, start + k];
+                            if (map[y][x] !== TILE_TYPES.WALL) band.push([x, y]);
+                        }
+                    }
+                    if (band.some(([x, y]) => nearCorner(x, y) || features[featKey(x, y)])) continue;
                     const d = horizontal ? (Math.random() < 0.5 ? 'r' : 'l') : (Math.random() < 0.5 ? 'd' : 'u');
-                    run.forEach(([x, y]) => put(x, y, { t: 'current', d }));
+                    band.forEach(([x, y]) => put(x, y, { t: 'current', d }));
                     n++;
                 }
             } else if (theme === 'grotte') {
@@ -1399,6 +1533,29 @@
                 if (f.t === 'current') {
                     const frame = Math.floor(now / 350) % 2 ? 'm2' : 'm1';
                     drawSprite(themeSprite(frame), cx, cy, TILE_SIZE + 0.5, TILE_SIZE + 0.5, DIR_ROTATION[f.d]);
+                    // eau plus sombre + chevrons blancs qui défilent dans le
+                    // sens du courant : les rivières se voient de loin
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(0, 80, 130, 0.22)';
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    ctx.translate(cx, cy);
+                    ctx.rotate(DIR_ROTATION[f.d]);
+                    ctx.beginPath();
+                    ctx.rect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+                    ctx.clip();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.lineWidth = 2.5;
+                    ctx.lineCap = 'round';
+                    const shift = ((now / 900) % 1) * TILE_SIZE / 2;
+                    for (let k = -1; k < 2; k++) {
+                        const ax = k * TILE_SIZE / 2 + shift;
+                        ctx.beginPath();
+                        ctx.moveTo(ax - 4, -6);
+                        ctx.lineTo(ax + 2, 0);
+                        ctx.lineTo(ax - 4, 6);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
                 } else if (f.t === 'crack' && CRACK_SPRITES[theme]) {
                     const stage = f.h ? 2 : Math.min(f.s, 2) - 1;
                     drawSprite(themeSprite(CRACK_SPRITES[theme][stage]), cx, cy, TILE_SIZE + 0.5);
@@ -1619,7 +1776,7 @@
         function renderRoundBanner() {
             const m = gameState.match;
             if (!m || !m.roundOver || m.matchWinner || fx.deaths.length > 0) return;
-            const title = !m.lastWinner ? 'Égalité' : (m.lastWinner === gameState.playerId ? 'Manche gagnée' : 'Manche perdue');
+            const title = !m.lastWinner ? 'Égalité' : (iWon(m.lastWinner) ? 'Manche gagnée' : 'Manche perdue');
             ctx.save();
             ctx.translate(VIEW_SIZE / 2, VIEW_SIZE / 2);
             ctx.fillStyle = 'rgba(253, 241, 211, 0.95)';
@@ -1631,14 +1788,14 @@
             ctx.stroke();
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = !m.lastWinner ? '#8a5a2b' : (m.lastWinner === gameState.playerId ? '#2d7a2b' : '#d8611d');
+            ctx.fillStyle = !m.lastWinner ? '#8a5a2b' : (iWon(m.lastWinner) ? '#2d7a2b' : '#d8611d');
             ctx.font = '34px Pacifico, cursive';
             ctx.fillText(title, 0, -18);
             ctx.fillStyle = '#3b2412';
             ctx.font = '700 20px "Baloo 2", sans-serif';
             // À plus de 2, le score complet est sur les fiches : on dit qui marque
             let line = `Score : ${scoreText(m)}`;
-            if (presentIds().length > 2) {
+            if (presentIds().length > 2 && !teamMode()) {
                 line = !m.lastWinner ? 'Personne ne marque'
                     : m.lastWinner === gameState.playerId ? 'Vous marquez un point' : `${subjectOf(m.lastWinner)} marque`;
             }
@@ -1950,7 +2107,7 @@
             let bestDist = Infinity;
             for (const otherId of Object.keys(gameState.players)) {
                 const other = gameState.players[otherId];
-                if (otherId === id || !other || !other.alive) continue;
+                if (!isEnemy(id, otherId) || !other || !other.alive) continue;
                 const dist = Math.abs(Math.floor(other.x / TILE_SIZE) - gridX) +
                              Math.abs(Math.floor(other.y / TILE_SIZE) - gridY);
                 if (dist < bestDist) {
@@ -2329,15 +2486,19 @@
         // portée de l'IA, pas une valeur fixe, pour rester cohérent avec les
         // bonus de puissance ramassés)
         function isStrategicToBomb(id, gridX, gridY, bombRange) {
-            // Un ennemi vivant (humain ou autre IA) dans la portée réelle de la bombe
-            const enemyInRange = Object.keys(gameState.players).some(otherId => {
+            // Qui est dans la portée réelle de la bombe ?
+            const inRange = otherId => {
                 const other = gameState.players[otherId];
                 if (otherId === id || !other || !other.alive) return false;
                 const distX = Math.abs(Math.floor(other.x / TILE_SIZE) - gridX);
                 const distY = Math.abs(Math.floor(other.y / TILE_SIZE) - gridY);
                 return (distX === 0 && distY <= bombRange) || (distY === 0 && distX <= bombRange);
-            });
-            if (enemyInRange) return true;
+            };
+            const others = Object.keys(gameState.players);
+            // Équipes : jamais de bombe sur un coéquipier
+            if (others.some(o => !isEnemy(id, o) && o !== id && inRange(o))) return false;
+            // Un ennemi vivant (humain ou autre IA) à portée
+            if (others.some(o => isEnemy(id, o) && inRange(o))) return true;
 
             // Si des briques peuvent être détruites, c'est aussi stratégique
             const directions = [
@@ -2941,18 +3102,26 @@
             const p = gameState.players[playerId];
             return {
                 character: (p && CHARACTERS[p.character]) ? p.character : 'baigneuse',
-                color: (PLAYER_SLOTS[playerId] || PLAYER_SLOTS.player1).skin
+                suit: suitOf(playerId)
             };
         }
 
-        // Maillot recoloré à la volée : les animaux n'existent dans l'atlas
-        // qu'en maillot BLEU (tools/build_sprites.py). Pour les autres
-        // couleurs, on copie l'image dans un petit canvas et on change la
-        // teinte des pixels bleu vif (mêmes teintes que SUIT_HUES).
-        const SUIT_TINTS = { red: 0, green: 0.33, yellow: 0.14 };
+        // Maillot recoloré à la volée. Dans l'atlas, un seul maillot par
+        // personnage : BLEU pour les animaux, ROUGE pour la baigneuse
+        // (tools/build_sprites.py). Pour une autre couleur, on copie l'image
+        // dans un petit canvas et on change la teinte des pixels du maillot.
         const tintCache = {};
-        function tintedFrame(name, color) {
-            const key = name + '@' + color;
+        function frameSource(look, dir, frame) {
+            return look.character === 'baigneuse'
+                ? { name: `red_${dir}_${frame}`, base: 'rouge' }
+                : { name: `${look.character}_${dir}_${frame}`, base: 'bleu' };
+        }
+        function isSuitPixel(base, h, sat, v) {
+            if (sat < 0.45) return false;
+            return base === 'bleu' ? (h >= 0.55 && h <= 0.72 && v >= 0.25) : ((h < 0.03 || h > 0.96) && v >= 0.35);
+        }
+        function tintedFrame(name, suit, base) {
+            const key = name + '@' + suit;
             if (key in tintCache) return tintCache[key];
             const pos = SPRITE_ATLAS.frames[name];
             const S = SPRITE_ATLAS.size;
@@ -2963,22 +3132,24 @@
             try {
                 const img = cctx.getImageData(0, 0, S, S);
                 const d = img.data;
-                const hue = SUIT_TINTS[color];
+                const hue = SUIT_COLORS[suit].hue;
+                // jaune et orange foncés tirent sur le kaki : on les éclaircit
+                const lift = suit === 'jaune' ? 1.25 : suit === 'orange' ? 1.1 : 1;
                 for (let i = 0; i < d.length; i += 4) {
                     if (d[i + 3] === 0) continue;
                     const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
                     const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
-                    if (max !== b || delta === 0) continue;
-                    const h = ((r - g) / delta + 4) / 6;   // teinte quand le bleu domine
+                    if (delta === 0) continue;
+                    let h = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+                    h = ((h / 6) + 1) % 1;
                     const sat = delta / max;
-                    if (h < 0.55 || h > 0.72 || sat < 0.45 || max < 0.25) continue;
-                    const v = color === 'yellow' ? Math.min(1, max * 1.25) : max;
-                    const [nr, ng, nb] = hsvToRgb(hue, sat, v);
+                    if (!isSuitPixel(base, h, sat, max)) continue;
+                    const [nr, ng, nb] = hsvToRgb(hue, sat, Math.min(1, max * lift));
                     d[i] = nr; d[i + 1] = ng; d[i + 2] = nb;
                 }
                 cctx.putImageData(img, 0, 0);
             } catch (e) {
-                // file:// : canvas « contaminé », on garde le maillot bleu
+                // file:// : canvas « contaminé », on garde le maillot d'origine
             }
             return (tintCache[key] = c);
         }
@@ -2991,26 +3162,22 @@
 
         // Dessine l'image `dir`/`frame` du personnage `look` centrée en (cx, cy)
         function drawCharacter(look, dir, frame, cx, cy, size, rotation = 0) {
-            if (look.character === 'baigneuse') {
-                return drawSprite(`${look.color}_${dir}_${frame}`, cx, cy, size, size, rotation);
-            }
-            const name = `${look.character}_${dir}_${frame}`;
-            if (look.color === 'blue' || !SPRITE_ATLAS.frames[name]) {
+            const { name, base } = frameSource(look, dir, frame);
+            if (look.suit === base || !SPRITE_ATLAS.frames[name]) {
                 return drawSprite(name, cx, cy, size, size, rotation);
             }
             ctx.save();
             ctx.translate(cx, cy);
             if (rotation) ctx.rotate(rotation);
-            ctx.drawImage(tintedFrame(name, look.color), -size / 2, -size / 2, size, size);
+            ctx.drawImage(tintedFrame(name, look.suit, base), -size / 2, -size / 2, size, size);
             ctx.restore();
         }
 
         // Portrait (fiche joueur, salle d'attente, menu) en style CSS
         function portraitCss(look, size) {
-            if (look.character === 'baigneuse') return spriteCss(`${look.color}_down_0`, size);
-            const name = `${look.character}_down_0`;
-            if (look.color === 'blue' || !spritesReady()) return spriteCss(name, size);
-            const c = tintedFrame(name, look.color);
+            const { name, base } = frameSource(look, 'down', 0);
+            if (look.suit === base || !spritesReady()) return spriteCss(name, size);
+            const c = tintedFrame(name, look.suit, base);
             if (!c.dataUrl) {
                 try { c.dataUrl = c.toDataURL(); } catch (e) { return spriteCss(name, size); }
             }
@@ -3485,7 +3652,9 @@
                 // temps (ou l'hôte qui ajoute une IA) ne peuvent pas obtenir
                 // la même place
                 gameRef.child(`players/${slot}`).transaction(current =>
-                    current === null ? spawnPlayer(slot) : undefined
+                    current === null
+                        ? spawnPlayer(slot, false, null, suitForSlot(slot, gameData.match, gameData.players, myColor))
+                        : undefined
                 ).then(({ committed }) => {
                     if (!committed) {
                         alert('Cette place vient d\'être prise, réessaie');
@@ -3508,7 +3677,9 @@
             if (!isHost() || gameState.gameStarted || !PLAYER_SLOTS[id] || id === 'player1') return;
             const gameRef = database.ref(`games/${gameState.roomId}`);
             gameRef.child(`players/${id}`).transaction(current =>
-                current === null ? spawnPlayer(id, true) : undefined
+                current === null
+                    ? spawnPlayer(id, true, null, suitForSlot(id, gameState.match, gameState.players, null))
+                    : undefined
             ).then(({ committed }) => {
                 if (committed) gameRef.update({ [`match/scores/${id}`]: 0 });
             });
@@ -3527,7 +3698,7 @@
         function launchGame() {
             if (!isHost() || gameState.gameStarted) return;
             const ids = PLAYER_IDS.filter(id => gameState.players[id]);
-            if (ids.length < 2) return;
+            if (ids.length < (teamMode() ? 4 : 2)) return;
             const scores = {};
             ids.forEach(id => { scores[id] = 0; });
             database.ref(`games/${gameState.roomId}`).update({
@@ -3546,30 +3717,32 @@
             if (!show) return;
             const players = gameData.players || {};
             const host = isHost();
-            const lobbyAis = PLAYER_IDS.filter(id => players[id] && players[id].ai).length;
             document.getElementById('lobbyCode').textContent = gameState.roomId;
             document.getElementById('lobbySlots').innerHTML = PLAYER_IDS.map(id => {
                 const p = players[id];
-                const slot = PLAYER_SLOTS[id];
-                const label = !p ? 'Place libre' : (p.ai ? (lobbyAis === 1 ? "L'IA" : slot.ai) : 'Joueur ' + slot.word) +
-                    (id === gameState.playerId ? ' (vous)' : '');
+                const suit = SUIT_COLORS[p && p.suit] || SUIT_COLORS.rouge;
+                const team = teamMode() ? ` <small>${teamName(TEAM_OF[id])}</small>` : '';
+                const label = (!p ? 'Place libre' : nameOf(id) + (id === gameState.playerId ? ' (vous)' : '')) + team;
                 let action = '';
                 if (host && id !== 'player1') {
                     if (!p) action = `<button type="button" class="btn btn-small" data-add-ai="${id}">Ajouter une IA</button>`;
                     else if (p.ai) action = `<button type="button" class="btn btn-small btn-ghost" data-remove-ai="${id}">Retirer</button>`;
                 }
-                return `<li class="${p ? '' : 'free'}" style="--accent:${slot.accent}">
-                    <span class="portrait sprite" style="${p ? portraitCss({ character: CHARACTERS[p.character] ? p.character : 'baigneuse', color: slot.skin }, 40) : ''}"></span>
+                const accent = p ? suit.css : (teamMode() ? SUIT_COLORS[gameState.match.teamColors[TEAM_OF[id]]].css : 'var(--sand-deep)');
+                return `<li class="${p ? '' : 'free'}" style="--accent:${accent}">
+                    <span class="portrait sprite" style="${p ? portraitCss(lookOf(id), 40) : ''}"></span>
                     <span class="slot-name">${label}</span>${action}</li>`;
             }).join('');
             const count = PLAYER_IDS.filter(id => players[id]).length;
             const launchBtn = document.getElementById('launchBtn');
             // style et non l'attribut hidden : .btn impose son display
             launchBtn.style.display = host ? '' : 'none';
-            launchBtn.disabled = count < 2;
+            const needed = teamMode() ? 4 : 2;
+            launchBtn.disabled = count < needed;
             document.getElementById('lobbyHint').textContent = !host ? "En attente du lancement par l'hôte…"
-                : count < 2 ? 'Donne le code à tes amis ou ajoute une IA'
-                : `${count} joueurs prêts`;
+                : count < needed ? (teamMode() ? 'Équipes 2 contre 2 : il faut 4 joueurs (complète avec des IA)'
+                                               : 'Donne le code à tes amis ou ajoute une IA')
+                : `${count} joueurs prêts` + (teamMode() ? ' · haut contre bas' : '');
         }
 
         // Supprimer l'ancienne partie de Firebase avant d'en créer une nouvelle.
@@ -3596,8 +3769,11 @@
         }
 
         function soloInfoText() {
+            const level = aiSettings().label.toLowerCase();
+            const me = nameOf(gameState.playerId).toLowerCase();
+            if (teamMode()) return `Partie solo en équipes : vous et une IA contre deux IA (${level}) - Vous êtes le ${me}`;
             const n = aiIds().length || aiCount;
-            return `Partie solo contre ${n > 1 ? n + ' IA' : "l'IA"} (${aiSettings().label.toLowerCase()}) - Vous êtes le joueur rouge`;
+            return `Partie solo contre ${n > 1 ? n + ' IA' : "l'IA"} (${level}) - Vous êtes le ${me}`;
         }
 
         // Créer une partie solo contre aiCount IA (places 2, 3, 4 : une
@@ -3614,12 +3790,16 @@
             gameState.playerId = 'player1';
             soloMode = true;
 
-            const ids = PLAYER_IDS.slice(0, 1 + aiCount);
+            // En équipes : toujours 4 (vous + une IA contre deux IA)
+            const match = newMatch([], true);
+            const ids = PLAYER_IDS.slice(0, match.mode === 'equipes' ? 4 : 1 + aiCount);
             const players = {};
             ids.forEach((id, i) => {
+                const suit = suitForSlot(id, match, players, i === 0 ? myColor : null);
                 players[id] = spawnPlayer(id, i > 0,
-                    i > 0 ? pickAiCharacter([myCharacter, ...Object.values(players).map(p => p.character)]) : null);
+                    i > 0 ? pickAiCharacter([myCharacter, ...Object.values(players).map(p => p.character)]) : null, suit);
             });
+            ids.forEach(id => { match.scores[id] = 0; });
             
             // Créer la partie dans Firebase avec le joueur humain et les IA
             const gameRef = database.ref(`games/${roomId}`);
@@ -3628,7 +3808,7 @@
                 bombs: {},
                 explosions: {},
                 bonuses: {},
-                ...roundSetup(newMatch(ids, true)),
+                ...roundSetup(match),
                 gameStarted: true
             });
             
@@ -4213,16 +4393,17 @@
                 const p = gameState.players[id];
                 const score = gameState.match && gameState.match.scores ? gameState.match.scores[id] : 0;
                 const malus = p.malus && Date.now() < (p.malusUntil || 0) ? p.malus : '';
-                return [id, nameOf(id), p.character, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
+                return [id, nameOf(id), p.character, p.suit, p.alive, p.maxBombs, p.bombRange, p.speedMultiplier, score,
                         p.canKick, p.hasDetonator, p.pierce, malus].join(':');
             }).join('|') + (spritesReady() ? 's' : '');
             if (key !== lastHudKey) {
                 lastHudKey = key;
                 hud.innerHTML = ids.map(id => {
                     const p = gameState.players[id];
-                    const label = { name: nameOf(id), accent: PLAYER_SLOTS[id].accent };
+                    const label = { name: nameOf(id), accent: SUIT_COLORS[suitOf(id)].css };
                     const speed = Math.round(((p.speedMultiplier || 1) - 1) / 0.2);
-                    const you = `<small>${id === gameState.playerId ? 'vous · ' : ''}${CHARACTERS[lookOf(id).character]}</small>`;
+                    const tags = [id === gameState.playerId ? 'vous' : '', teamMode() ? teamName(TEAM_OF[id]) : ''].filter(Boolean);
+                    const you = `<small>${tags.join(' · ') || '&nbsp;'}</small>`;
                     const m = gameState.match;
                     const won = m && m.scores ? (m.scores[id] || 0) : 0;
                     const need = m ? m.roundsToWin : DEFAULT_ROUNDS_TO_WIN;
@@ -4309,7 +4490,11 @@
         const aiCountButtons = document.querySelectorAll('.level-picker [data-ai-count]');
         function showAiCount() {
             aiCountButtons.forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.aiCount) === aiCount)));
-            singlePlayerBtn.textContent = aiCount > 1 ? 'Jouer contre les IA' : "Jouer contre l'IA";
+            // en équipes, le nombre d'IA est imposé (1 avec vous, 2 contre)
+            const teams = gameSettings.mode === 'equipes';
+            document.getElementById('aiCountPicker').style.display = teams ? 'none' : '';
+            document.getElementById('teamSoloNote').style.display = teams ? '' : 'none';
+            singlePlayerBtn.textContent = teams || aiCount > 1 ? 'Jouer contre les IA' : "Jouer contre l'IA";
         }
         aiCountButtons.forEach(b => b.addEventListener('click', () => {
             aiCount = Number(b.dataset.aiCount);
@@ -4334,12 +4519,24 @@
         // Les recolorations attendent que l'atlas soit chargé.
         const characterButtons = document.getElementById('characterButtons');
         function renderCharacterPicker() {
-            document.getElementById('characterName').textContent = 'Ton personnage : ' + CHARACTERS[myCharacter];
+            document.getElementById('characterName').textContent =
+                `${CHARACTERS[myCharacter]}, maillot ${SUIT_COLORS[myColor].word}`;
             characterButtons.innerHTML = Object.keys(CHARACTERS).map(c =>
                 `<button type="button" role="radio" data-character="${c}" aria-checked="${c === myCharacter}" ` +
                 `title="${CHARACTERS[c]}" aria-label="${CHARACTERS[c]}" ` +
-                `style="${portraitCss({ character: c, color: 'red' }, 52)}"></button>`).join('');
+                `style="${portraitCss({ character: c, suit: myColor }, 52)}"></button>`).join('');
+            document.getElementById('suitButtons').innerHTML = SUIT_IDS.map(c =>
+                `<button type="button" role="radio" data-suit="${c}" aria-checked="${c === myColor}" ` +
+                `title="Maillot ${SUIT_COLORS[c].word}" aria-label="Maillot ${SUIT_COLORS[c].word}" ` +
+                `style="background:${SUIT_COLORS[c].css}"></button>`).join('');
         }
+        document.getElementById('suitButtons').addEventListener('click', e => {
+            const b = e.target.closest('[data-suit]');
+            if (!b) return;
+            myColor = b.dataset.suit;
+            try { localStorage.setItem('islandBomber.suit', myColor); } catch (err) { /* non bloquant */ }
+            renderCharacterPicker();
+        });
         characterButtons.addEventListener('click', e => {
             const b = e.target.closest('[data-character]');
             if (!b) return;
@@ -4351,13 +4548,14 @@
         spriteSheet.addEventListener('load', renderCharacterPicker);
 
         // Réglages de la partie : manches, marée, quantité de bonus
-        document.querySelectorAll('.settings [data-setting]').forEach(group => {
+        document.querySelectorAll('#roomControls [data-setting]').forEach(group => {
             const key = group.dataset.setting;
             const buttons = group.querySelectorAll('[data-value]');
-            const parse = v => (key === 'bonusRate' || key === 'map' ? v : Number(v));
+            const parse = v => (['bonusRate', 'map', 'mode'].includes(key) ? v : Number(v));
             const show = () => {
                 buttons.forEach(b =>
                     b.setAttribute('aria-checked', String(parse(b.dataset.value) === gameSettings[key])));
+                if (key === 'mode') showAiCount();
                 if (key === 'map') {
                     document.getElementById('mapDesc').textContent = gameSettings.map === 'aleatoire'
                         ? 'Une carte différente à chaque manche.' : THEMES[gameSettings.map].desc;

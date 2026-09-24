@@ -248,6 +248,7 @@ const gridOf = (page, id) => page.evaluate(id => {
     await scenarioSoloTroisIA();
     await scenarioReglages();
     await scenarioCartes();
+    await scenarioEquipes();
     await scenarioMaree();
     await scenarioPouvoirs();
 
@@ -517,6 +518,8 @@ async function scenarioQuatreJoueurs() {
         }).join(' '))));
         const expected = '0,0 14,14 14,0 0,14:IA';
         check('4 joueurs : les 4 coins, vus pareil par les 3 onglets', views.every(v => v === expected), views.join(' / '));
+        const suits = await A.page.evaluate(() => PLAYER_IDS.map(id => gameState.players[id].suit));
+        check('4 joueurs : 4 maillots de couleurs différentes', new Set(suits).size === 4, suits.join(','));
         const corners = await A.page.evaluate(() => Object.values(PLAYER_SLOTS).map(s => gameState.map[s.y][s.x]).join(','));
         check('4 joueurs : les 4 coins de départ sont du sable', corners === '0,0,0,0', corners);
         const cards = await C.page.$$eval('#hud .player-card', els => els.map(e => e.querySelector('.name').firstChild.textContent.trim()));
@@ -596,7 +599,7 @@ async function scenarioSoloTroisIA() {
         check('Personnages : le joueur a le crabe, les IA 3 autres animaux différents',
             looks[0] === 'crabe' && new Set(looks).size === 4 && looks.slice(1).every(c => ['goeland', 'poisson', 'tortue', 'crabe', 'flamant', 'dauphin'].includes(c)), looks.join(','));
         const tint = await P.page.evaluate(() => {
-            const c = tintedFrame('goeland_down_0', 'red');
+            const c = tintedFrame('goeland_down_0', 'rouge', 'bleu');
             const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
             let red = 0, blue = 0;
             for (let i = 0; i < d.length; i += 4) {
@@ -649,7 +652,6 @@ async function scenarioReglages() {
     try {
         const menuOnly = await P.page.evaluate(() => getComputedStyle(document.querySelector('.arena')).display === 'none');
         check('Menu : pas d’île vide sous le choix de partie', menuOnly);
-        await P.page.click('.settings summary');
         await P.page.click('[data-setting="roundsToWin"] [data-value="1"]');
         await P.page.click('[data-setting="bonusRate"] [data-value="beaucoup"]');
         await P.page.click('[data-bonus="6"]'); // pas de noix pourrie
@@ -798,4 +800,46 @@ async function scenarioCartes() {
         });
         check('Grotte : noir au loin, clair autour du joueur', dark && dark.far > 150 && dark.me < 60, JSON.stringify(dark));
     });
+}
+
+// Équipes 2 contre 2 en solo : vous + une IA (haut) contre deux IA (bas),
+// maillot choisi = couleur de votre équipe, la manche va à l'équipe survivante.
+async function scenarioEquipes() {
+    const P = await openPlayer('Équipes', '?manches=2&maree=600');
+    let room = null;
+    try {
+        await P.page.click('[data-setting="mode"] [data-value="equipes"]');
+        await P.page.click('[data-suit="violet"]');
+        await P.page.click('#singlePlayerBtn');
+        await P.page.waitForFunction(() => gameState.gameStarted && Object.keys(gameState.players).length === 4, { timeout: 10000 });
+        room = await P.page.evaluate(() => gameState.roomId);
+        const suits = await P.page.evaluate(() => PLAYER_IDS.map(id => gameState.players[id].suit).join(','));
+        check('Équipes : maillot choisi pour mon équipe, autre couleur en face', suits === 'violet,bleu,violet,bleu', suits);
+        const allies = await P.page.evaluate(() => ({ ally: isEnemy('player3', 'player1'), foe: isEnemy('player3', 'player2') }));
+        check('Équipes : l’IA coéquipière ne vise pas le joueur', allies.ally === false && allies.foe === true, JSON.stringify(allies));
+        await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
+        await P.page.evaluate(() => {
+            stopAI();
+            for (const id of ['player2', 'player4']) {
+                gameState.players[id].alive = false;
+                database.ref(`games/${gameState.roomId}/players/${id}/alive`).set(false);
+            }
+        });
+        await P.page.waitForFunction(() => gameState.match.roundOver, { timeout: 5000 });
+        await sleep(300);
+        const r = await P.page.evaluate(() => ({ w: gameState.match.lastWinner, s: gameState.match.scores,
+            info: document.getElementById('gameInfo').textContent }));
+        check('Équipes : la manche va à l’équipe survivante, les deux marquent',
+            r.w === 'A' && r.s.player1 === 1 && r.s.player3 === 1 && r.s.player2 === 0 && r.info.startsWith('Manche gagnée - 1 à 0'),
+            JSON.stringify(r));
+        const hud = await P.page.$$eval('#hud .player-card .name', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+        check('Équipes : fiches avec l’équipe, sans nom de personnage', hud[0].includes('vous') && hud[0].includes('équipe violette') &&
+            !hud.some(t => /Goéland|Crabe|Tortue|Dauphin|Poisson|Flamant|Baigneuse/.test(t)), hud.join(' | '));
+    } catch (e) {
+        check('Déroulement du scénario équipes', false, e.message);
+    } finally {
+        check('Aucune erreur JS (équipes)', P.errors.length === 0, P.errors.slice(0, 3).join(' | '));
+        if (room) await P.page.evaluate(r => database.ref(`games/${r}`).remove(), room).catch(() => {});
+        await P.browser.close();
+    }
 }
