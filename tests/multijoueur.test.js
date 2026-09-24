@@ -8,7 +8,22 @@ const path = require('path');
 const puppeteer = require('puppeteer-core');
 
 const GAME_DIR = path.join(__dirname, '..');
-const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// Navigateur : variable CHROME, sinon le premier trouvé parmi les
+// emplacements habituels (Chrome ou Edge sous Windows, y compris installé
+// sans droits admin dans le profil ; Chrome/Chromium sous Linux et macOS).
+const CHROME = process.env.CHROME || [
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe'),
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+].find(p => p && fs.existsSync(p));
+if (!CHROME) {
+    console.error('Aucun Chrome ni Edge trouvé : indique son chemin avec la variable CHROME.');
+    process.exit(1);
+}
 const hub = process.env.FIREBASE_MOCK === '1' ? require('./mock/hub').createHub() : null;
 const PORT = 8765;
 const ROOM = 'mptest_' + Date.now();

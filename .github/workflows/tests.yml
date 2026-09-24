@@ -1,0 +1,24 @@
+# Tests automatiques sur la VRAIE base Firebase (salles mptest_* supprimées
+# à la fin), à chaque push et à la demande (onglet Actions → Run workflow).
+name: Tests multijoueur
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Tests (vraie base Firebase)
+        run: npm test
