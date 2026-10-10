@@ -2529,55 +2529,23 @@
                 note("Attend (à l'abri)");
                 return;
             } else {
-                // Sinon, aller chercher un bonus proche
-                const nearestBonus = findNearestBonus(gridX, gridY);
-
-                if (nearestBonus && nearestBonus.distance <= aiSettings().bonusRadius) {
-                    safeDirections.sort((a, b) => {
-                        const distA = Math.abs((gridX + a.dx) - nearestBonus.bonus.x) +
-                                      Math.abs((gridY + a.dy) - nearestBonus.bonus.y);
-                        const distB = Math.abs((gridX + b.dx) - nearestBonus.bonus.x) +
-                                      Math.abs((gridY + b.dy) - nearestBonus.bonus.y);
-                        return distA - distB;
-                    });
-
-                    chosenDirection = safeDirections[0];
-                    note("Vers bonus");
+                // Sinon : plan par BFS (bonus, ennemi, brique à casser). L'ancien
+                // choix « la case voisine la plus proche à vol d'oiseau » butait
+                // sur les murs et faisait des allers-retours sans fin.
+                const player = nearestEnemy(id, gridX, gridY);
+                if (player && Math.random() < aiSettings().wander) {
+                    // Niveaux faciles : flâne de temps en temps au lieu de chasser
+                    chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
+                    note("Flâne");
                 } else {
-                    // Comportement normal : chasser l'ennemi vivant le plus proche
-                    const player = nearestEnemy(id, gridX, gridY);
-
-                    if (player && player.alive && Math.random() < aiSettings().wander) {
-                        // Niveaux faciles : flâne de temps en temps au lieu de chasser
-                        chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
-                        note("Flâne");
-                    } else if (player && player.alive) {
-                        // Éviter les mouvements d'aller-retour
-                        const nonBacktrackingMoves = safeDirections.filter(dir =>
-                            !(dir.dx === -brain.lastMove.dx && dir.dy === -brain.lastMove.dy)
-                        );
-
-                        const movesToConsider = nonBacktrackingMoves.length > 0 ?
-                                               nonBacktrackingMoves : safeDirections;
-
-                        // IA agressive : toujours foncer vers sa cible, jamais
-                        // de fuite par timidité quand il est proche (l'ancien
-                        // comportement "évite joueur" la rendait molle).
-                        movesToConsider.sort((a, b) => {
-                            const distA = Math.abs((gridX + a.dx) - Math.floor(player.x / TILE_SIZE)) +
-                                         Math.abs((gridY + a.dy) - Math.floor(player.y / TILE_SIZE));
-                            const distB = Math.abs((gridX + b.dx) - Math.floor(player.x / TILE_SIZE)) +
-                                         Math.abs((gridY + b.dy) - Math.floor(player.y / TILE_SIZE));
-                            return distA - distB;
-                        });
-
-                        // Toujours prendre la meilleure direction vers la cible
-                        // (plus d'aléatoire ici : elle ne doit plus temporiser)
-                        chosenDirection = movesToConsider[0];
-
-                        note("Vers ennemi");
+                    const plan = aiPlan(id, gridX, gridY, player);
+                    // Sur place trop longtemps (pas de bombe possible ici) : bouger
+                    brain.idle = plan && !plan.dir ? (brain.idle || 0) + 1 : 0;
+                    if (plan && (plan.dir || brain.idle < 8)) {
+                        chosenDirection = plan.dir;
+                        note(plan.label);
                     } else {
-                        // Plus d'ennemi vivant : déplacement aléatoire
+                        brain.idle = 0;
                         chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
                         note("Aléatoire");
                     }
@@ -2593,6 +2561,64 @@
                     brain.lastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
                 }
             }
+        }
+
+        // Plan de déplacement d'une IA à l'abri. BFS sur les cases sûres
+        // atteignables, puis par ordre de priorité :
+        //  1. bonus atteignable à moins de bonusRadius pas ;
+        //  2. ennemi atteignable : aller à côté de lui ;
+        //  3. ennemi enfermé : aller près de la brique qui en rapproche le plus
+        //     (la bombe se pose ensuite toute seule, isStrategicToBomb).
+        // Renvoie { dir, label } ; dir = null : rester sur place (déjà au bon endroit).
+        function aiPlan(id, gridX, gridY, enemy) {
+            const avoidMalus = aiLevel !== 'facile';
+            const steps = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }];
+            const nodes = [{ x: gridX, y: gridY, dist: 0, first: null }];
+            const seen = new Set([`${gridX},${gridY}`]);
+            for (let i = 0; i < nodes.length; i++) {
+                const n = nodes[i];
+                for (const d of steps) {
+                    const x = n.x + d.dx, y = n.y + d.dy, key = `${x},${y}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    if (!isGridAccessible(x, y) || hasBomb(x, y) || isCellDangerous(x, y)) continue;
+                    const b = getBonusAt(x, y);
+                    if (avoidMalus && b && b.type === BONUS_TYPES.MALUS) continue;
+                    nodes.push({ x, y, dist: n.dist + 1, first: n.first || d });
+                }
+            }
+
+            // 1. Bonus (ordre BFS = le plus proche en pas réels d'abord)
+            const radius = aiSettings().bonusRadius;
+            for (const n of nodes) {
+                if (n.dist === 0 || n.dist > radius) continue;
+                const b = getBonusAt(n.x, n.y);
+                if (b && b.type !== BONUS_TYPES.MALUS) return { dir: n.first, label: "Vers bonus" };
+            }
+            if (!enemy) return null;
+            const ex = Math.floor(enemy.x / TILE_SIZE), ey = Math.floor(enemy.y / TILE_SIZE);
+            const toEnemy = (x, y) => Math.abs(x - ex) + Math.abs(y - ey);
+
+            // 2. Ennemi atteignable
+            const near = nodes.find(n => toEnemy(n.x, n.y) <= 1);
+            if (near) return { dir: near.first, label: near.first ? "Vers ennemi" : "Au contact" };
+
+            // 3. Brique qui rapproche de l'ennemi (score : distance brique-ennemi,
+            // puis longueur du chemin). Repli : case la plus proche de l'ennemi.
+            let best = null, bestScore = Infinity;
+            for (const n of nodes) {
+                let brick = Infinity;
+                for (const d of steps) {
+                    const x = n.x + d.dx, y = n.y + d.dy;
+                    if (gameState.map[y] && gameState.map[y][x] === TILE_TYPES.BRICK) {
+                        brick = Math.min(brick, toEnemy(x, y));
+                    }
+                }
+                const score = brick < Infinity ? brick * 3 + n.dist : 1000 + toEnemy(n.x, n.y) * 3 + n.dist;
+                if (score < bestScore) { bestScore = score; best = n; }
+            }
+            if (!best) return null;
+            return { dir: best.first, label: best.first ? "Vers brique" : "Devant brique" };
         }
 
         // Vérifier si l'IA est près d'une explosion imminente ou en cours.
