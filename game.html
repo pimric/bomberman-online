@@ -1118,7 +1118,7 @@
         // Autorité : l'hôte (player1, donc aussi l'onglet solo) décide de la
         // fin de manche et lance la suivante ; les autres ne font qu'afficher.
         const DEFAULT_ROUNDS_TO_WIN = 3;
-        const TIDE_STEP_MS = 600;          // ms entre deux cases inondées sur un côté
+        const TIDE_STEP_MS = 300;          // ms entre deux cases inondées (spirale, une case à la fois)
         const TIDE_WARNING_MS = 1500;      // case qui clignote avant d'être inondée
         const ROUND_END_SETTLE = 500;      // attente avant de juger (double KO possible)
         const ROUND_PAUSE = 3200;          // pause entre deux manches
@@ -1246,23 +1246,26 @@
             return !!w && (teamMode() ? w === teamOf(gameState.playerId) : w === gameState.playerId);
         }
 
-        // Ordre d'inondation : anneau par anneau depuis le bord. Dans un
-        // anneau, les 4 côtés avancent EN MÊME TEMPS depuis leur coin (sens
-        // horaire) : les 4 coins de départ sont inondés au même instant, aucun
-        // joueur n'est avantagé.
+        // Ordre d'inondation : une seule spirale, comme le Bomberman classique.
+        // Une case à la fois, dans le sens horaire, anneau par anneau depuis
+        // le bord. Chaque anneau commence au milieu de son côté haut : aucun
+        // coin de départ n'est inondé en premier.
         const TIDE_STEPS = (() => {
             const steps = {};
-            let base = 0;
+            let i = 0;
             for (let r = 0; r <= Math.floor((GRID_SIZE - 1) / 2); r++) {
                 const a = r, b = GRID_SIZE - 1 - r, len = b - a;
-                if (len === 0) { steps[`${a},${a}`] = base; break; }
-                for (let t = 0; t < len; t++) {
-                    steps[`${a + t},${a}`] = base + t;  // haut, vers la droite
-                    steps[`${b},${a + t}`] = base + t;  // droite, vers le bas
-                    steps[`${b - t},${b}`] = base + t;  // bas, vers la gauche
-                    steps[`${a},${b - t}`] = base + t;  // gauche, vers le haut
+                if (len === 0) { steps[`${a},${a}`] = i; break; }
+                const ring = [];
+                for (let t = 0; t < len; t++) ring.push([a + t, a]); // haut, vers la droite
+                for (let t = 0; t < len; t++) ring.push([b, a + t]); // droite, vers le bas
+                for (let t = 0; t < len; t++) ring.push([b - t, b]); // bas, vers la gauche
+                for (let t = 0; t < len; t++) ring.push([a, b - t]); // gauche, vers le haut
+                const startAt = Math.floor(len / 2);
+                for (let k = 0; k < ring.length; k++) {
+                    const [x, y] = ring[(startAt + k) % ring.length];
+                    steps[`${x},${y}`] = i++;
                 }
-                base += len;
             }
             return steps;
         })();

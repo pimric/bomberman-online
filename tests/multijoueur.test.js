@@ -392,7 +392,7 @@ async function scenarioMaree() {
         await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
         const before = await P.page.evaluate(() => isFlooded(7, 7));
         check('Marée : le centre de l’île n’est pas inondé', !before);
-        await P.page.waitForFunction(() => !gameState.players.player1.alive, { timeout: 5000 })
+        await P.page.waitForFunction(() => !gameState.players.player1.alive, { timeout: 25000 })
             .then(() => check('Marée : le joueur resté dans son coin se noie', true))
             .catch(() => check('Marée : le joueur resté dans son coin se noie', false));
         const blocked = await P.page.evaluate(() => !isGridAccessible(0, 0) && isFlooded(0, 0));
