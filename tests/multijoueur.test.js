@@ -97,8 +97,8 @@ const gridOf = (page, id) => page.evaluate(id => {
 
         const a1 = await gridOf(A.page, 'player1'), a2 = await gridOf(A.page, 'player2');
         const b1 = await gridOf(B.page, 'player1'), b2 = await gridOf(B.page, 'player2');
-        check('Spawns corrects des deux côtés', a1.x === 0 && a1.y === 0 && a2.x === 14 && a2.y === 14 &&
-            b1.x === 0 && b1.y === 0 && b2.x === 14 && b2.y === 14,
+        check('Spawns corrects des deux côtés', a1.x === 0 && a1.y === 0 && a2.x === 12 && a2.y === 12 &&
+            b1.x === 0 && b1.y === 0 && b2.x === 12 && b2.y === 12,
             `A voit p1=(${a1.x},${a1.y}) p2=(${a2.x},${a2.y}) / B voit p1=(${b1.x},${b1.y}) p2=(${b2.x},${b2.y})`);
 
         // Compteurs d'écritures Firebase (vus depuis A) : 1 explosion par bombe attendue
@@ -126,7 +126,7 @@ const gridOf = (page, id) => page.evaluate(id => {
 
         // --- Affichage lissé de player2 chez A pendant que B marche ---------
         const bKey = await B.page.evaluate(() =>
-            isGridAccessible(13, 14) ? 'ArrowLeft' : (isGridAccessible(14, 13) ? 'ArrowUp' : null));
+            isGridAccessible(11, 12) ? 'ArrowLeft' : (isGridAccessible(12, 11) ? 'ArrowUp' : null));
         if (bKey) {
             const samplesPromise = A.page.evaluate(() => new Promise(resolve => {
                 const pts = [];
@@ -224,7 +224,7 @@ const gridOf = (page, id) => page.evaluate(id => {
         check('Manche 2 : score 1-0 des deux côtés',
             r2.every(r => r.scores.player1 === 1 && r.scores.player2 === 0), JSON.stringify(r2.map(r => r.scores)));
         check('Manche 2 : joueurs revenus vivants à leur coin',
-            r2.every(r => r.p1.join() === '0,0,true' && r.p2.join() === '14,14,true'),
+            r2.every(r => r.p1.join() === '0,0,true' && r.p2.join() === '12,12,true'),
             JSON.stringify(r2.map(r => [r.p1, r.p2])));
         check('Manche 2 : nouveau décompte', r2.every(r => r.countdown));
 
@@ -321,7 +321,7 @@ async function scenarioPouvoirs() {
             const me = gameState.players.player1;
             return { bomb: b && [b.x, b.y], me: [Math.floor(me.x / TILE_SIZE), Math.floor(me.y / TILE_SIZE)] };
         });
-        check('Coup de pied : la bombe glisse jusqu’au bord', kicked.bomb && kicked.bomb[0] === 14 && kicked.bomb[1] === 0,
+        check('Coup de pied : la bombe glisse jusqu’au bord', kicked.bomb && kicked.bomb[0] === 12 && kicked.bomb[1] === 0,
             JSON.stringify(kicked));
         // touche encore enfoncée après le coup : il peut suivre la bombe d'une
         // case (comportement classique), mais pas la dépasser
@@ -380,8 +380,8 @@ async function scenarioPouvoirs() {
 }
 
 // Marée montante : réglée à 0,5 s après le décompte. Le joueur reste
-// immobile dans son coin, qui est inondé en premier : il doit se noyer, et
-// la case doit devenir infranchissable.
+// immobile dans son coin, que la spirale atteint pendant le premier tour :
+// il doit se noyer, et la case doit devenir infranchissable.
 async function scenarioMaree() {
     const P = await openPlayer('Marée', '?manches=1&maree=0.5');
     let room = null;
@@ -390,9 +390,17 @@ async function scenarioMaree() {
         await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
         room = await P.page.evaluate(() => gameState.roomId);
         await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
-        const before = await P.page.evaluate(() => isFlooded(7, 7));
+        // IA arrêtée et mise à l'abri au centre (la spirale atteint son coin
+        // avant celui du joueur) : la manche ne doit pas finir avant
+        await P.page.evaluate(() => {
+            stopAI();
+            gameState.map[5][5] = TILE_TYPES.EMPTY;
+            const c = 5 * TILE_SIZE + TILE_SIZE / 2;
+            Object.assign(gameState.players.player2, { x: c, y: c, fromX: c, fromY: c, toX: c, toY: c, moving: false });
+        });
+        const before = await P.page.evaluate(() => isFlooded(6, 6));
         check('Marée : le centre de l’île n’est pas inondé', !before);
-        await P.page.waitForFunction(() => !gameState.players.player1.alive, { timeout: 5000 })
+        await P.page.waitForFunction(() => !gameState.players.player1.alive, { timeout: 25000 })
             .then(() => check('Marée : le joueur resté dans son coin se noie', true))
             .catch(() => check('Marée : le joueur resté dans son coin se noie', false));
         const blocked = await P.page.evaluate(() => !isGridAccessible(0, 0) && isFlooded(0, 0));
@@ -523,8 +531,13 @@ async function scenarioQuatreJoueurs() {
         check('4 joueurs : B et C prennent les places 2 et 3', ids[0] === 'player2' && ids[1] === 'player3', ids.join(','));
 
         // L'hôte complète la dernière place avec une IA
-        await A.page.waitForSelector('[data-add-ai="player4"]', { timeout: 5000 });
-        await A.page.click('[data-add-ai="player4"]');
+        // Clic dans la page : la salle d'attente se redessine à chaque mise à
+        // jour Firebase, un clic puppeteer peut viser un bouton déjà remplacé
+        await A.page.waitForFunction(() => {
+            const btn = document.querySelector('[data-add-ai="player4"]');
+            if (btn) btn.click();
+            return !!btn;
+        }, { timeout: 5000 });
         await C.page.waitForFunction(() => document.querySelectorAll('#lobbySlots li:not(.free)').length === 4, { timeout: 5000 })
             .then(() => check('4 joueurs : salle d’attente pleine vue par C', true))
             .catch(() => check('4 joueurs : salle d’attente pleine vue par C', false));
@@ -541,7 +554,7 @@ async function scenarioQuatreJoueurs() {
             const p = gameState.players[id];
             return `${Math.floor(p.x / TILE_SIZE)},${Math.floor(p.y / TILE_SIZE)}${p.ai ? ':IA' : ''}`;
         }).join(' '))));
-        const expected = '0,0 14,14 14,0 0,14:IA';
+        const expected = '0,0 12,12 12,0 0,12:IA';
         check('4 joueurs : les 4 coins, vus pareil par les 3 onglets', views.every(v => v === expected), views.join(' / '));
         const suits = await A.page.evaluate(() => PLAYER_IDS.map(id => gameState.players[id].suit));
         check('4 joueurs : 4 maillots de couleurs différentes', new Set(suits).size === 4, suits.join(','));
@@ -696,7 +709,7 @@ async function scenarioReglages() {
         check('Pseudo : sur la fiche et dans le message', pseudo.card === 'Paulo' && pseudo.info.includes('Vous êtes Paulo') && pseudo.stored === 'Paulo',
             JSON.stringify(pseudo));
         const drawn = await P.page.evaluate(async () => {
-            for (let i = 0; i < 40; i++) spawnBonus(i % 15, 7);
+            for (let i = 0; i < 40; i++) spawnBonus(i % GRID_SIZE, 7);
             await new Promise(r => setTimeout(r, 300));
             return [...new Set(gameState.bonuses.map(b => b.type))].sort().join(',');
         });
@@ -807,7 +820,14 @@ async function scenarioCartes() {
 
     await withMap('tempete', async P => {
         await P.page.evaluate(() => startAI()); // la boucle IA ne gêne pas : la tempête dépend de l'hôte
-        await P.page.evaluate(() => stopAI());
+        // IA arrêtée et mise à l'abri au centre (la spirale atteint son coin
+        // avant celui du joueur) : la manche ne doit pas finir avant
+        await P.page.evaluate(() => {
+            stopAI();
+            gameState.map[5][5] = TILE_TYPES.EMPTY;
+            const c = 5 * TILE_SIZE + TILE_SIZE / 2;
+            Object.assign(gameState.players.player2, { x: c, y: c, fromX: c, fromY: c, toX: c, toY: c, moving: false });
+        });
         await P.page.waitForFunction(() => gameState.storm.length > 0, { timeout: 6000 })
             .then(() => check('Tempête : l’hôte fait tomber des noix de coco', true))
             .catch(() => check('Tempête : l’hôte fait tomber des noix de coco', false));
@@ -902,7 +922,14 @@ async function scenarioTactile() {
         await P.page.waitForFunction(() => gameState.gameStarted, { timeout: 10000 });
         room = await P.page.evaluate(() => gameState.roomId);
         await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
-        await P.page.evaluate(() => stopAI());
+        // IA arrêtée et mise à l'abri au centre (la spirale atteint son coin
+        // avant celui du joueur) : la manche ne doit pas finir avant
+        await P.page.evaluate(() => {
+            stopAI();
+            gameState.map[5][5] = TILE_TYPES.EMPTY;
+            const c = 5 * TILE_SIZE + TILE_SIZE / 2;
+            Object.assign(gameState.players.player2, { x: c, y: c, fromX: c, fromY: c, toX: c, toY: c, moving: false });
+        });
         const layout = await P.page.evaluate(() => {
             const r = id => document.getElementById(id).getBoundingClientRect();
             const board = document.querySelector('.board-frame').getBoundingClientRect();
@@ -948,7 +975,14 @@ async function scenarioPauseEtTirsAmis() {
         await P.page.waitForFunction(() => gameState.gameStarted && gameState.match, { timeout: 10000 });
         room = await P.page.evaluate(() => gameState.roomId);
         await P.page.waitForFunction(() => !countdownActive(), { timeout: 8000 });
-        await P.page.evaluate(() => stopAI());
+        // IA arrêtée et mise à l'abri au centre (la spirale atteint son coin
+        // avant celui du joueur) : la manche ne doit pas finir avant
+        await P.page.evaluate(() => {
+            stopAI();
+            gameState.map[5][5] = TILE_TYPES.EMPTY;
+            const c = 5 * TILE_SIZE + TILE_SIZE / 2;
+            Object.assign(gameState.players.player2, { x: c, y: c, fromX: c, fromY: c, toX: c, toY: c, moving: false });
+        });
         await P.page.keyboard.press(' ');
         await P.page.waitForFunction(() => gameState.bombs.length === 1, { timeout: 2000 });
         const start = await P.page.evaluate(() => gameState.match.roundStart);
@@ -1135,6 +1169,8 @@ async function scenarioSalleAttente() {
                 await B.page.waitForSelector('[data-move="player3"]', { timeout: 5000 });
                 await B.page.click('[data-move="player3"]');
                 await A.page.waitForFunction(() => gameState.players.player3 && !gameState.players.player3.ai && !gameState.players.player2, { timeout: 8000 });
+                // B a peut-être changé de place avant d'avoir relu sa fiche
+                await B.page.waitForFunction(() => gameState.players.player3 && gameState.players.player3.suit, { timeout: 8000 }).catch(() => {});
                 const moved = await B.page.evaluate(() => ({ id: gameState.playerId, suit: gameState.players.player3 && gameState.players.player3.suit,
                     team: gameState.match.teamColors.A }));
                 check('Équipes : l’invité change d’équipe (place 3, couleur de l’équipe du haut)',

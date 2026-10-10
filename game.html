@@ -614,7 +614,7 @@
         //--------------------------------------------------
         // CONFIGURATION DU JEU
         //--------------------------------------------------
-        const GRID_SIZE = 15;
+        const GRID_SIZE = 13; // 13 (et pas 15) : on se retrouve plus vite, comme le Bomberman classique
         const TILE_SIZE = 32;
 
         // Déplacement case par case (grille classique). MOVE_DURATION = temps
@@ -630,7 +630,7 @@
 
         // Configuration des bombes
         const BOMB_TIMER = 3000; // Délai avant explosion (ms)
-        const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
+        const EXPLOSION_DURATION = 600; // Durée de l'explosion (ms) : la flamme tue tant qu'elle est visible, plus longtemps = piège
         const BOMB_OWNER_GRACE = 500; // Retard toléré avant qu'un autre onglet explose la bombe à la place de son propriétaire (ms)
 
         // Configuration de l'IA, par niveau (choisi dans le menu, retenu dans
@@ -705,7 +705,7 @@
         // Fréquence relative de chaque bonus à la destruction d'un tonneau
         const BONUS_WEIGHTS = [
             [BONUS_TYPES.BOMB, 24], [BONUS_TYPES.POWER, 24], [BONUS_TYPES.SPEED, 14],
-            [BONUS_TYPES.KICK, 10], [BONUS_TYPES.DETONATOR, 6], [BONUS_TYPES.PIERCE, 8],
+            [BONUS_TYPES.KICK, 10], [BONUS_TYPES.DETONATOR, 3], [BONUS_TYPES.PIERCE, 8],
             [BONUS_TYPES.MALUS, 14]
         ];
 
@@ -897,7 +897,7 @@
         // pour que les sprites restent nets, puis tout est dessiné en
         // coordonnées logiques via renderScale.
         const BOARD_MARGIN = TILE_SIZE;
-        const VIEW_SIZE = GRID_SIZE * TILE_SIZE + 2 * BOARD_MARGIN; // 544
+        const VIEW_SIZE = GRID_SIZE * TILE_SIZE + 2 * BOARD_MARGIN;
         let renderScale = 1;
 
         function resizeCanvas() {
@@ -1118,7 +1118,7 @@
         // Autorité : l'hôte (player1, donc aussi l'onglet solo) décide de la
         // fin de manche et lance la suivante ; les autres ne font qu'afficher.
         const DEFAULT_ROUNDS_TO_WIN = 3;
-        const TIDE_STEP_MS = 600;          // ms entre deux cases inondées sur un côté
+        const TIDE_STEP_MS = 300;          // ms entre deux cases inondées (spirale, une case à la fois)
         const TIDE_WARNING_MS = 1500;      // case qui clignote avant d'être inondée
         const ROUND_END_SETTLE = 500;      // attente avant de juger (double KO possible)
         const ROUND_PAUSE = 3200;          // pause entre deux manches
@@ -1246,23 +1246,26 @@
             return !!w && (teamMode() ? w === teamOf(gameState.playerId) : w === gameState.playerId);
         }
 
-        // Ordre d'inondation : anneau par anneau depuis le bord. Dans un
-        // anneau, les 4 côtés avancent EN MÊME TEMPS depuis leur coin (sens
-        // horaire) : les 4 coins de départ sont inondés au même instant, aucun
-        // joueur n'est avantagé.
+        // Ordre d'inondation : une seule spirale, comme le Bomberman classique.
+        // Une case à la fois, dans le sens horaire, anneau par anneau depuis
+        // le bord. Chaque anneau commence au milieu de son côté haut : aucun
+        // coin de départ n'est inondé en premier.
         const TIDE_STEPS = (() => {
             const steps = {};
-            let base = 0;
+            let i = 0;
             for (let r = 0; r <= Math.floor((GRID_SIZE - 1) / 2); r++) {
                 const a = r, b = GRID_SIZE - 1 - r, len = b - a;
-                if (len === 0) { steps[`${a},${a}`] = base; break; }
-                for (let t = 0; t < len; t++) {
-                    steps[`${a + t},${a}`] = base + t;  // haut, vers la droite
-                    steps[`${b},${a + t}`] = base + t;  // droite, vers le bas
-                    steps[`${b - t},${b}`] = base + t;  // bas, vers la gauche
-                    steps[`${a},${b - t}`] = base + t;  // gauche, vers le haut
+                if (len === 0) { steps[`${a},${a}`] = i; break; }
+                const ring = [];
+                for (let t = 0; t < len; t++) ring.push([a + t, a]); // haut, vers la droite
+                for (let t = 0; t < len; t++) ring.push([b, a + t]); // droite, vers le bas
+                for (let t = 0; t < len; t++) ring.push([b - t, b]); // bas, vers la gauche
+                for (let t = 0; t < len; t++) ring.push([a, b - t]); // gauche, vers le haut
+                const startAt = Math.floor(len / 2);
+                for (let k = 0; k < ring.length; k++) {
+                    const [x, y] = ring[(startAt + k) % ring.length];
+                    steps[`${x},${y}`] = i++;
                 }
-                base += len;
             }
             return steps;
         })();
@@ -1507,13 +1510,16 @@
         const THEME_IDS = Object.keys(THEMES);
         // Stade de fissure où la case devient un trou (infranchissable, mortel)
         const HOLE_STAGE = { volcan: 3, ponton: 2 };
+        // Un trou se rebouche au bout de HOLE_DURATION ms (redevient une
+        // fissure neuve) : il gêne sans enfermer pour toute la manche.
+        const HOLE_DURATION = 10000;
         // Image de chaque stade (planche carte_<thème> : m1, m2, m3)
         const CRACK_SPRITES = { volcan: ['m1', 'm2', 'm3'], ponton: ['m1', 'm2', 'm2'] };
         const PLAGE_SPRITES = { sol: 'sand', sol2: 'sand2', mur: 'palm', casse: 'barrel', bord: 'water' };
         const DIRS = { r: [1, 0], l: [-1, 0], d: [0, 1], u: [0, -1] };
         const DIR_ROTATION = { r: 0, d: Math.PI / 2, l: Math.PI, u: -Math.PI / 2 };
-        const CURRENT_DELAY = 180;    // ms d'arrêt sur un courant avant d'être entraîné
-        const STORM_INTERVAL = 1700;  // ms moyen entre deux chutes de noix de coco (hôte)
+        const CURRENT_DELAY = 400;    // ms d'arrêt sur un courant avant d'être entraîné
+        const STORM_INTERVAL = 3200;  // ms moyen entre deux chutes de noix de coco (hôte)
         const STORM_WARNING = 1800;   // ms d'ombre au sol avant l'impact
         const STORM_IMPACT = 250;     // ms pendant lesquelles l'impact tue
 
@@ -1537,7 +1543,11 @@
         }
         function isHole(x, y) {
             const f = featureAt(x, y);
-            return !!(f && f.t === 'crack' && f.h);
+            return !!(f && f.t === 'crack' && holeActive(f));
+        }
+        // Trou encore ouvert ? (anciens trous sans heure : permanents)
+        function holeActive(f) {
+            return !!f.h && (!f.at || serverNow() < f.at + HOLE_DURATION);
         }
         function shuffle(list) {
             for (let i = list.length - 1; i > 0; i--) {
@@ -1569,8 +1579,9 @@
             const put = (x, y, f) => { features[featKey(x, y)] = f; };
 
             if (theme === 'volcan' || theme === 'ponton') {
-                // fissures, y compris sous les obstacles cassables
-                cells.slice(0, Math.round(cells.length * 0.2)).forEach(([x, y]) => put(x, y, { t: 'crack', s: 1 }));
+                // fissures sur le sable visible seulement (plus de trou surprise
+                // sous un tonneau) : on voit toujours où un trou peut s'ouvrir
+                sand.slice(0, Math.round(sand.length * 0.15)).forEach(([x, y]) => put(x, y, { t: 'crack', s: 1 }));
             } else if (theme === 'jungle') {
                 const burrows = sand.splice(0, 4);
                 for (let i = 0; i + 1 < burrows.length; i += 2) {
@@ -1590,16 +1601,16 @@
                     }
                 }
             } else if (theme === 'lagon') {
-                // Rivières : bandes de 3 couloirs de large (ligne impaire, la
-                // paire entre deux palmiers, puis impaire) sur 7 à 9 cases,
-                // toutes dans le même sens. 3 rivières, qui ne se croisent pas.
-                for (let n = 0, tries = 0; n < 3 && tries < 80; tries++) {
+                // Rivières : un couloir (ligne ou colonne impaire, sans palmier)
+                // de 5 à 7 cases. 2 rivières, qui ne se croisent pas : assez
+                // peu pour qu'on puisse s'organiser autour.
+                for (let n = 0, tries = 0; n < 2 && tries < 80; tries++) {
                     const horizontal = Math.random() < 0.5;
-                    const first = 1 + 2 * Math.floor(Math.random() * ((GRID_SIZE - 3) / 2)); // 1, 3, … 11
-                    const length = 7 + Math.floor(Math.random() * 3);
+                    const first = 1 + 2 * Math.floor(Math.random() * ((GRID_SIZE - 1) / 2)); // 1, 3, … 11
+                    const length = 5 + Math.floor(Math.random() * 3);
                     const start = 1 + Math.floor(Math.random() * (GRID_SIZE - length - 1));
                     const band = [];
-                    for (let w = 0; w < 3; w++) {
+                    for (let w = 0; w < 1; w++) {
                         for (let k = 0; k < length; k++) {
                             const [x, y] = horizontal ? [start + k, first + w] : [first + w, start + k];
                             if (map[y][x] !== TILE_TYPES.WALL) band.push([x, y]);
@@ -1661,8 +1672,10 @@
             if (!holeStage) return;
             for (const { x, y } of cells) {
                 const f = featureAt(x, y);
-                if (!f || f.t !== 'crack' || f.h) continue;
-                const next = { t: 'crack', s: f.s + 1, h: f.s + 1 >= holeStage };
+                if (!f || f.t !== 'crack' || holeActive(f)) continue;
+                const s = f.h ? 2 : f.s + 1; // trou rebouché = fissure neuve
+                const next = { t: 'crack', s, h: s >= holeStage };
+                if (next.h) next.at = serverNow();
                 gameState.features[featKey(x, y)] = next;
                 database.ref(`games/${gameState.roomId}/features/${featKey(x, y)}`).set(next);
             }
@@ -1746,8 +1759,23 @@
                     }
                     ctx.restore();
                 } else if (f.t === 'crack' && CRACK_SPRITES[theme]) {
-                    const stage = f.h ? 2 : Math.min(f.s, 2) - 1;
+                    const hole = holeActive(f);
+                    const s = f.h ? 1 : f.s; // trou rebouché = fissure neuve
+                    const stage = hole ? 2 : Math.min(s, 2) - 1;
                     drawSprite(themeSprite(CRACK_SPRITES[theme][stage]), cx, cy, TILE_SIZE + 0.5);
+                    if (!hole && s + 1 >= (HOLE_STAGE[theme] || 99)) {
+                        // prochaine explosion = trou : liseré rouge qui pulse
+                        ctx.save();
+                        ctx.strokeStyle = `rgba(255, 60, 20, ${0.55 + 0.3 * Math.sin(now / 200)})`;
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                        ctx.restore();
+                    } else if (hole && f.at && f.at + HOLE_DURATION - serverNow() < 2000) {
+                        // bientôt rebouché : le trou clignote
+                        if (Math.floor(now / 150) % 2) {
+                            drawSprite(themeSprite(CRACK_SPRITES[theme][0]), cx, cy, TILE_SIZE + 0.5);
+                        }
+                    }
                 } else if (f.t === 'burrow') {
                     drawSprite(themeSprite('m1'), cx, cy, TILE_SIZE * 0.95);
                 } else if (f.t === 'light') {
@@ -1899,6 +1927,18 @@
             database.ref(`games/${gameState.roomId}`).update(upd);
         }
 
+        // Direction tenue : la flèche pressée en dernier l'emporte (virage
+        // immédiat), repli sur l'ordre fixe (commandes tactiles).
+        const ARROW_DIRS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+        const arrowOrder = [];
+        function heldDirection() {
+            for (let i = arrowOrder.length - 1; i >= 0; i--) {
+                if (gameState.keys[arrowOrder[i]]) return ARROW_DIRS[arrowOrder[i]];
+            }
+            for (const k in ARROW_DIRS) if (gameState.keys[k]) return ARROW_DIRS[k];
+            return null;
+        }
+
         // Mettre à jour l'état du jeu
         function update() {
             if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
@@ -1915,20 +1955,16 @@
             if (player && player.alive) {
                 // Démarrer un nouveau pas de grille si le joueur n'est pas déjà en train
                 // d'en traverser un (une touche = une case, pas de mouvement libre)
-                if (countdownActive()) {
-                    // décompte 3-2-1 : pas de déplacement
-                } else if (gameState.keys['ArrowUp']) {
-                    stepEntityOnGrid(player, 0, -1, now);
-                } else if (gameState.keys['ArrowDown']) {
-                    stepEntityOnGrid(player, 0, 1, now);
-                } else if (gameState.keys['ArrowLeft']) {
-                    stepEntityOnGrid(player, -1, 0, now);
-                } else if (gameState.keys['ArrowRight']) {
-                    stepEntityOnGrid(player, 1, 0, now);
-                }
-
-                // Faire avancer l'interpolation en cours (si le joueur est entre deux cases)
+                // Fin du pas en cours d'abord, puis nouveau pas dans la même image :
+                // pas de trame perdue entre deux cases (réactivité)
                 if (advanceEntityMovement(player, now)) syncMovement(gameState.playerId, player, now);
+                if (!countdownActive()) {
+                    const dir = heldDirection();
+                    if (dir && stepEntityOnGrid(player, dir[0], dir[1], now)) {
+                        advanceEntityMovement(player, now);
+                        syncMovement(gameState.playerId, player, now);
+                    }
+                }
 
                 // Malus « bombes incontrôlables » : pose dès que possible
                 if (hasMalus(player, 'diarrhee')) placeBomb();
@@ -2521,55 +2557,23 @@
                 note("Attend (à l'abri)");
                 return;
             } else {
-                // Sinon, aller chercher un bonus proche
-                const nearestBonus = findNearestBonus(gridX, gridY);
-
-                if (nearestBonus && nearestBonus.distance <= aiSettings().bonusRadius) {
-                    safeDirections.sort((a, b) => {
-                        const distA = Math.abs((gridX + a.dx) - nearestBonus.bonus.x) +
-                                      Math.abs((gridY + a.dy) - nearestBonus.bonus.y);
-                        const distB = Math.abs((gridX + b.dx) - nearestBonus.bonus.x) +
-                                      Math.abs((gridY + b.dy) - nearestBonus.bonus.y);
-                        return distA - distB;
-                    });
-
-                    chosenDirection = safeDirections[0];
-                    note("Vers bonus");
+                // Sinon : plan par BFS (bonus, ennemi, brique à casser). L'ancien
+                // choix « la case voisine la plus proche à vol d'oiseau » butait
+                // sur les murs et faisait des allers-retours sans fin.
+                const player = nearestEnemy(id, gridX, gridY);
+                if (player && Math.random() < aiSettings().wander) {
+                    // Niveaux faciles : flâne de temps en temps au lieu de chasser
+                    chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
+                    note("Flâne");
                 } else {
-                    // Comportement normal : chasser l'ennemi vivant le plus proche
-                    const player = nearestEnemy(id, gridX, gridY);
-
-                    if (player && player.alive && Math.random() < aiSettings().wander) {
-                        // Niveaux faciles : flâne de temps en temps au lieu de chasser
-                        chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
-                        note("Flâne");
-                    } else if (player && player.alive) {
-                        // Éviter les mouvements d'aller-retour
-                        const nonBacktrackingMoves = safeDirections.filter(dir =>
-                            !(dir.dx === -brain.lastMove.dx && dir.dy === -brain.lastMove.dy)
-                        );
-
-                        const movesToConsider = nonBacktrackingMoves.length > 0 ?
-                                               nonBacktrackingMoves : safeDirections;
-
-                        // IA agressive : toujours foncer vers sa cible, jamais
-                        // de fuite par timidité quand il est proche (l'ancien
-                        // comportement "évite joueur" la rendait molle).
-                        movesToConsider.sort((a, b) => {
-                            const distA = Math.abs((gridX + a.dx) - Math.floor(player.x / TILE_SIZE)) +
-                                         Math.abs((gridY + a.dy) - Math.floor(player.y / TILE_SIZE));
-                            const distB = Math.abs((gridX + b.dx) - Math.floor(player.x / TILE_SIZE)) +
-                                         Math.abs((gridY + b.dy) - Math.floor(player.y / TILE_SIZE));
-                            return distA - distB;
-                        });
-
-                        // Toujours prendre la meilleure direction vers la cible
-                        // (plus d'aléatoire ici : elle ne doit plus temporiser)
-                        chosenDirection = movesToConsider[0];
-
-                        note("Vers ennemi");
+                    const plan = aiPlan(id, gridX, gridY, player);
+                    // Sur place trop longtemps (pas de bombe possible ici) : bouger
+                    brain.idle = plan && !plan.dir ? (brain.idle || 0) + 1 : 0;
+                    if (plan && (plan.dir || brain.idle < 8)) {
+                        chosenDirection = plan.dir;
+                        note(plan.label);
                     } else {
-                        // Plus d'ennemi vivant : déplacement aléatoire
+                        brain.idle = 0;
                         chosenDirection = safeDirections[Math.floor(Math.random() * safeDirections.length)];
                         note("Aléatoire");
                     }
@@ -2585,6 +2589,64 @@
                     brain.lastMove = { dx: chosenDirection.dx, dy: chosenDirection.dy };
                 }
             }
+        }
+
+        // Plan de déplacement d'une IA à l'abri. BFS sur les cases sûres
+        // atteignables, puis par ordre de priorité :
+        //  1. bonus atteignable à moins de bonusRadius pas ;
+        //  2. ennemi atteignable : aller à côté de lui ;
+        //  3. ennemi enfermé : aller près de la brique qui en rapproche le plus
+        //     (la bombe se pose ensuite toute seule, isStrategicToBomb).
+        // Renvoie { dir, label } ; dir = null : rester sur place (déjà au bon endroit).
+        function aiPlan(id, gridX, gridY, enemy) {
+            const avoidMalus = aiLevel !== 'facile';
+            const steps = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }];
+            const nodes = [{ x: gridX, y: gridY, dist: 0, first: null }];
+            const seen = new Set([`${gridX},${gridY}`]);
+            for (let i = 0; i < nodes.length; i++) {
+                const n = nodes[i];
+                for (const d of steps) {
+                    const x = n.x + d.dx, y = n.y + d.dy, key = `${x},${y}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    if (!isGridAccessible(x, y) || hasBomb(x, y) || isCellDangerous(x, y)) continue;
+                    const b = getBonusAt(x, y);
+                    if (avoidMalus && b && b.type === BONUS_TYPES.MALUS) continue;
+                    nodes.push({ x, y, dist: n.dist + 1, first: n.first || d });
+                }
+            }
+
+            // 1. Bonus (ordre BFS = le plus proche en pas réels d'abord)
+            const radius = aiSettings().bonusRadius;
+            for (const n of nodes) {
+                if (n.dist === 0 || n.dist > radius) continue;
+                const b = getBonusAt(n.x, n.y);
+                if (b && b.type !== BONUS_TYPES.MALUS) return { dir: n.first, label: "Vers bonus" };
+            }
+            if (!enemy) return null;
+            const ex = Math.floor(enemy.x / TILE_SIZE), ey = Math.floor(enemy.y / TILE_SIZE);
+            const toEnemy = (x, y) => Math.abs(x - ex) + Math.abs(y - ey);
+
+            // 2. Ennemi atteignable
+            const near = nodes.find(n => toEnemy(n.x, n.y) <= 1);
+            if (near) return { dir: near.first, label: near.first ? "Vers ennemi" : "Au contact" };
+
+            // 3. Brique qui rapproche de l'ennemi (score : distance brique-ennemi,
+            // puis longueur du chemin). Repli : case la plus proche de l'ennemi.
+            let best = null, bestScore = Infinity;
+            for (const n of nodes) {
+                let brick = Infinity;
+                for (const d of steps) {
+                    const x = n.x + d.dx, y = n.y + d.dy;
+                    if (gameState.map[y] && gameState.map[y][x] === TILE_TYPES.BRICK) {
+                        brick = Math.min(brick, toEnemy(x, y));
+                    }
+                }
+                const score = brick < Infinity ? brick * 3 + n.dist : 1000 + toEnemy(n.x, n.y) * 3 + n.dist;
+                if (score < bestScore) { bestScore = score; best = n; }
+            }
+            if (!best) return null;
+            return { dir: best.first, label: best.first ? "Vers brique" : "Devant brique" };
         }
 
         // Vérifier si l'IA est près d'une explosion imminente ou en cours.
@@ -3333,10 +3395,21 @@
                         ctx.roundRect(cx - TILE_SIZE * 0.44, cy - TILE_SIZE * 0.38, TILE_SIZE * 0.88, TILE_SIZE * 0.88, 5);
                         ctx.fill();
                     }
+                    // Lisibilité : l'incassable repose sur un socle sombre plein,
+                    // le cassable est plus petit et cerclé de clair
                     if (tile === TILE_TYPES.WALL) {
+                        ctx.fillStyle = 'rgba(20, 20, 30, 0.45)';
+                        ctx.beginPath();
+                        ctx.roundRect(cx - TILE_SIZE / 2 + 1, cy - TILE_SIZE / 2 + 1, TILE_SIZE - 2, TILE_SIZE - 2, 4);
+                        ctx.fill();
                         drawSprite(themeSprite('mur'), cx, cy, TILE_SIZE * (currentTheme() === 'plage' ? 1.1 : 1));
                     } else if (tile === TILE_TYPES.BRICK) {
-                        drawSprite(themeSprite('casse'), cx, cy, TILE_SIZE * 0.95);
+                        drawSprite(themeSprite('casse'), cx, cy, TILE_SIZE * 0.88);
+                        ctx.strokeStyle = 'rgba(255, 240, 200, 0.7)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.roundRect(cx - TILE_SIZE * 0.45, cy - TILE_SIZE * 0.45, TILE_SIZE * 0.9, TILE_SIZE * 0.9, 6);
+                        ctx.stroke();
                     }
                 }
             }
@@ -4517,6 +4590,11 @@
             }
             if (isPaused()) return;
             gameState.keys[e.key] = true;
+            if (ARROW_DIRS[e.key]) {
+                const i = arrowOrder.indexOf(e.key);
+                if (i >= 0) arrowOrder.splice(i, 1);
+                arrowOrder.push(e.key);
+            }
             
             // Touche espace pour poser une bombe
             if (e.key === ' ' && gameState.gameStarted) {
