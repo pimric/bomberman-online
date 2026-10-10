@@ -630,7 +630,7 @@
 
         // Configuration des bombes
         const BOMB_TIMER = 3000; // Délai avant explosion (ms)
-        const EXPLOSION_DURATION = 1000; // Durée d'affichage de l'explosion (ms)
+        const EXPLOSION_DURATION = 600; // Durée de l'explosion (ms) : la flamme tue tant qu'elle est visible, plus longtemps = piège
         const BOMB_OWNER_GRACE = 500; // Retard toléré avant qu'un autre onglet explose la bombe à la place de son propriétaire (ms)
 
         // Configuration de l'IA, par niveau (choisi dans le menu, retenu dans
@@ -705,7 +705,7 @@
         // Fréquence relative de chaque bonus à la destruction d'un tonneau
         const BONUS_WEIGHTS = [
             [BONUS_TYPES.BOMB, 24], [BONUS_TYPES.POWER, 24], [BONUS_TYPES.SPEED, 14],
-            [BONUS_TYPES.KICK, 10], [BONUS_TYPES.DETONATOR, 6], [BONUS_TYPES.PIERCE, 8],
+            [BONUS_TYPES.KICK, 10], [BONUS_TYPES.DETONATOR, 3], [BONUS_TYPES.PIERCE, 8],
             [BONUS_TYPES.MALUS, 14]
         ];
 
@@ -1899,6 +1899,18 @@
             database.ref(`games/${gameState.roomId}`).update(upd);
         }
 
+        // Direction tenue : la flèche pressée en dernier l'emporte (virage
+        // immédiat), repli sur l'ordre fixe (commandes tactiles).
+        const ARROW_DIRS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+        const arrowOrder = [];
+        function heldDirection() {
+            for (let i = arrowOrder.length - 1; i >= 0; i--) {
+                if (gameState.keys[arrowOrder[i]]) return ARROW_DIRS[arrowOrder[i]];
+            }
+            for (const k in ARROW_DIRS) if (gameState.keys[k]) return ARROW_DIRS[k];
+            return null;
+        }
+
         // Mettre à jour l'état du jeu
         function update() {
             if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
@@ -1915,20 +1927,16 @@
             if (player && player.alive) {
                 // Démarrer un nouveau pas de grille si le joueur n'est pas déjà en train
                 // d'en traverser un (une touche = une case, pas de mouvement libre)
-                if (countdownActive()) {
-                    // décompte 3-2-1 : pas de déplacement
-                } else if (gameState.keys['ArrowUp']) {
-                    stepEntityOnGrid(player, 0, -1, now);
-                } else if (gameState.keys['ArrowDown']) {
-                    stepEntityOnGrid(player, 0, 1, now);
-                } else if (gameState.keys['ArrowLeft']) {
-                    stepEntityOnGrid(player, -1, 0, now);
-                } else if (gameState.keys['ArrowRight']) {
-                    stepEntityOnGrid(player, 1, 0, now);
-                }
-
-                // Faire avancer l'interpolation en cours (si le joueur est entre deux cases)
+                // Fin du pas en cours d'abord, puis nouveau pas dans la même image :
+                // pas de trame perdue entre deux cases (réactivité)
                 if (advanceEntityMovement(player, now)) syncMovement(gameState.playerId, player, now);
+                if (!countdownActive()) {
+                    const dir = heldDirection();
+                    if (dir && stepEntityOnGrid(player, dir[0], dir[1], now)) {
+                        advanceEntityMovement(player, now);
+                        syncMovement(gameState.playerId, player, now);
+                    }
+                }
 
                 // Malus « bombes incontrôlables » : pose dès que possible
                 if (hasMalus(player, 'diarrhee')) placeBomb();
@@ -4517,6 +4525,11 @@
             }
             if (isPaused()) return;
             gameState.keys[e.key] = true;
+            if (ARROW_DIRS[e.key]) {
+                const i = arrowOrder.indexOf(e.key);
+                if (i >= 0) arrowOrder.splice(i, 1);
+                arrowOrder.push(e.key);
+            }
             
             // Touche espace pour poser une bombe
             if (e.key === ' ' && gameState.gameStarted) {
