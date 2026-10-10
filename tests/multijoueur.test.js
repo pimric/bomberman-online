@@ -531,8 +531,13 @@ async function scenarioQuatreJoueurs() {
         check('4 joueurs : B et C prennent les places 2 et 3', ids[0] === 'player2' && ids[1] === 'player3', ids.join(','));
 
         // L'hôte complète la dernière place avec une IA
-        await A.page.waitForSelector('[data-add-ai="player4"]', { timeout: 5000 });
-        await A.page.click('[data-add-ai="player4"]');
+        // Clic dans la page : la salle d'attente se redessine à chaque mise à
+        // jour Firebase, un clic puppeteer peut viser un bouton déjà remplacé
+        await A.page.waitForFunction(() => {
+            const btn = document.querySelector('[data-add-ai="player4"]');
+            if (btn) btn.click();
+            return !!btn;
+        }, { timeout: 5000 });
         await C.page.waitForFunction(() => document.querySelectorAll('#lobbySlots li:not(.free)').length === 4, { timeout: 5000 })
             .then(() => check('4 joueurs : salle d’attente pleine vue par C', true))
             .catch(() => check('4 joueurs : salle d’attente pleine vue par C', false));
