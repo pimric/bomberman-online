@@ -1169,6 +1169,8 @@ async function scenarioSalleAttente() {
                 await B.page.waitForSelector('[data-move="player3"]', { timeout: 5000 });
                 await B.page.click('[data-move="player3"]');
                 await A.page.waitForFunction(() => gameState.players.player3 && !gameState.players.player3.ai && !gameState.players.player2, { timeout: 8000 });
+                // B a peut-être changé de place avant d'avoir relu sa fiche
+                await B.page.waitForFunction(() => gameState.players.player3 && gameState.players.player3.suit, { timeout: 8000 }).catch(() => {});
                 const moved = await B.page.evaluate(() => ({ id: gameState.playerId, suit: gameState.players.player3 && gameState.players.player3.suit,
                     team: gameState.match.teamColors.A }));
                 check('Équipes : l’invité change d’équipe (place 3, couleur de l’équipe du haut)',
