@@ -123,7 +123,49 @@
             box-shadow: 0 4px 0 var(--sand-deep), 0 10px 20px rgba(0, 40, 60, .25);
             border-left: 6px solid var(--accent, var(--wood));
         }
+        .player-card { position: relative; }
         .player-card.dead { opacity: .55; filter: grayscale(.8); }
+        .player-card .card-emote {
+            position: absolute;
+            top: -10px;
+            right: -6px;
+            font-size: 26px;
+            line-height: 1;
+            animation: emote-pop .25s ease-out;
+        }
+        @keyframes emote-pop { from { transform: scale(.3); } to { transform: scale(1); } }
+
+        /* Réactions pendant la partie (emojis) */
+        .emote-bar { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+        .emote-bar button {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(253, 241, 211, 0.92);
+            box-shadow: 0 3px 0 var(--sand-deep);
+            font-size: 24px;
+            line-height: 1;
+            cursor: pointer;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .emote-bar button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--sand-deep); }
+        .emote-bar button:disabled { opacity: .5; }
+        .emote-bar kbd {
+            position: absolute;
+            right: -3px;
+            bottom: -3px;
+            font: 700 10px/1 "Baloo 2", sans-serif;
+            padding: 2px 4px;
+            border-radius: 6px;
+            background: var(--wood);
+            color: #fff;
+        }
+        body.touch .emote-bar kbd { display: none; }
+        body.touch .emote-bar button { width: 40px; height: 40px; font-size: 22px; }
         .player-card .portrait { grid-row: span 2; width: 52px; height: 52px; }
         .player-card .name { font-weight: 800; line-height: 1.1; }
         .player-card .name small { display: block; font-weight: 600; color: var(--wood); }
@@ -404,7 +446,8 @@
         /* Menu (aucune partie) : seulement le choix de partie, pas d'île vide */
         body.in-menu .arena,
         body.in-menu #gameInfo,
-        body.in-menu .keys-hint { display: none; }
+        body.in-menu .keys-hint,
+        body.in-menu .emote-bar { display: none; }
 
         #debug {
             display: none;
@@ -592,7 +635,10 @@
             </div>
         </div>
 
-        <p class="keys-hint"><kbd>←</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> se déplacer · <kbd>Espace</kbd> poser une bombe · <kbd>Entrée</kbd> déclencher (détonateur)</p>
+        <!-- Réactions (EMOTES), boutons créés au chargement -->
+        <div id="emoteBar" class="emote-bar" role="group" aria-label="Réactions"></div>
+
+        <p class="keys-hint"><kbd>←</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> se déplacer · <kbd>Espace</kbd> poser une bombe · <kbd>Entrée</kbd> déclencher (détonateur) · <kbd>1</kbd>…<kbd>6</kbd> réagir</p>
     </main>
 
     <!-- Panneau de debug (caché) -->
@@ -619,7 +665,7 @@
 
         // Déplacement case par case (grille classique). MOVE_DURATION = temps
         // pour traverser une case à vitesse normale (speedMultiplier = 1).
-        const MOVE_DURATION = 200; // ms par case
+        const MOVE_DURATION = 175; // ms par case (plus court = moins de « glisse » après relâchement)
 
         // Définir les types de cases
         const TILE_TYPES = {
@@ -639,10 +685,12 @@
         //   bombChance  : probabilité de poser quand c'est stratégique
         //   wander      : probabilité de flâner au hasard au lieu de chasser
         //   bonusRadius : distance max à laquelle elle va chercher un bonus
+        //   nerves      : sensibilité à la panique (0 = robot, 1 = très nerveuse)
+        //   react       : temps de réaction moyen face à un danger qu'elle n'a pas créé (ms)
         const AI_LEVELS = {
-            facile:    { label: 'Facile',    moveDelay: 380, bombChance: 0.25, wander: 0.35, bonusRadius: 2 },
-            normal:    { label: 'Normal',    moveDelay: 270, bombChance: 0.45, wander: 0.12, bonusRadius: 4 },
-            difficile: { label: 'Difficile', moveDelay: 200, bombChance: 0.6,  wander: 0,    bonusRadius: 5 }
+            facile:    { label: 'Facile',    moveDelay: 380, bombChance: 0.25, wander: 0.35, bonusRadius: 2, nerves: 1,    react: 350 },
+            normal:    { label: 'Normal',    moveDelay: 270, bombChance: 0.45, wander: 0.12, bonusRadius: 4, nerves: 0.7,  react: 230 },
+            difficile: { label: 'Difficile', moveDelay: 200, bombChance: 0.6,  wander: 0,    bonusRadius: 5, nerves: 0.45, react: 140 }
         };
         let aiLevel = 'normal';
         try {
@@ -653,6 +701,20 @@
         function aiSettings() {
             return AI_LEVELS[aiLevel];
         }
+
+        // Réactions pendant la partie : players/<id>/emote = { i, at } (index
+        // dans EMOTES, heure serveur). Bulle au-dessus de la tête (vivant)
+        // et sur la fiche joueur (aussi après la mort) pendant EMOTE_MS.
+        const EMOTES = [
+            { e: '😂', label: 'Mort de rire' },
+            { e: '😱', label: 'Au secours' },
+            { e: '😡', label: 'En colère' },
+            { e: '😎', label: 'Trop facile' },
+            { e: '👋', label: 'Coucou' },
+            { e: '🌴', label: 'Tranquille' }
+        ];
+        const EMOTE_MS = 2500;
+        const EMOTE_COOLDOWN = 1200; // anti-spam
 
         // Nombre de pas que l'IA peut GARANTIR avant l'explosion de sa bombe.
         // Pire cas par pas : la case se traverse en MOVE_DURATION, mais le tick
@@ -674,7 +736,7 @@
         const lastPositionSync = {}; // id d'entité -> dernier envoi (ms)
 
         // Lissage de l'affichage des joueurs distants (voir getDisplayPosition)
-        const REMOTE_CATCHUP = 1.3;                 // vitesse d'affichage = vitesse de marche x 1.3
+        const REMOTE_CATCHUP = 1.6;                 // vitesse d'affichage = vitesse de marche x 1.6 (moins de traînée)
         const REMOTE_SNAP_DISTANCE = TILE_SIZE * 3; // au-delà : téléport direct
         const remoteDisplay = {};
 
@@ -1520,7 +1582,7 @@
         const DIR_ROTATION = { r: 0, d: Math.PI / 2, l: Math.PI, u: -Math.PI / 2 };
         const CURRENT_DELAY = 400;    // ms d'arrêt sur un courant avant d'être entraîné
         const STORM_INTERVAL = 3200;  // ms moyen entre deux chutes de noix de coco (hôte)
-        const STORM_WARNING = 1800;   // ms d'ombre au sol avant l'impact
+        const STORM_WARNING = 3000;   // ms d'ombre au sol avant l'impact
         const STORM_IMPACT = 250;     // ms pendant lesquelles l'impact tue
 
         function currentTheme() {
@@ -1812,7 +1874,7 @@
                     ctx.globalAlpha = 0.35 + 0.6 * (1 - left / STORM_WARNING);
                     drawSprite(themeSprite('m2'), cx, cy, TILE_SIZE);
                     ctx.globalAlpha = 1;
-                    if (left < 450) drawSprite(themeSprite('m1'), cx, cy - TILE_SIZE * 4 * (left / 450), TILE_SIZE * 0.8);
+                    if (left < 900) drawSprite(themeSprite('m1'), cx, cy - TILE_SIZE * 5 * (left / 900), TILE_SIZE * 0.8);
                 } else {
                     if (!stormLanded.has(s.id)) {
                         stormLanded.add(s.id);
@@ -2441,6 +2503,105 @@
             aiMoveInterval = null;
         }
 
+        //--------------------------------------------------
+        // FACTEUR HUMAIN : panique et audace
+        //--------------------------------------------------
+        // Calculés à chaque décision par l'onglet de l'hôte (rien n'est
+        // synchronisé). Chaque IA tire un tempérament au hasard (plus ou
+        // moins nerveuse), gardé jusqu'à la fin de la partie.
+        const clamp01 = v => Math.max(0, Math.min(1, v));
+        function aiTemper(id) {
+            const brain = aiBrain(id);
+            if (brain.temper === undefined) brain.temper = Math.random();
+            return brain.temper;
+        }
+
+        // Fin de manche : part de l'île déjà inondée (0 au début, 1 quand
+        // il ne reste qu'un tiers des cases)
+        function endgamePressure() {
+            let flooded = 0;
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) if (isFlooded(x, y)) flooded++;
+            }
+            return clamp01(flooded / (GRID_SIZE * GRID_SIZE) / 0.66);
+        }
+
+        // Ennemis vivants à moins de `radius` cases
+        function enemiesWithin(id, gridX, gridY, radius) {
+            return Object.keys(gameState.players).filter(o => {
+                const p = gameState.players[o];
+                return isEnemy(id, o) && p && p.alive && !p.offline &&
+                    Math.abs(Math.floor(p.x / TILE_SIZE) - gridX) + Math.abs(Math.floor(p.y / TILE_SIZE) - gridY) <= radius;
+            }).length;
+        }
+
+        // Cases libres atteignables (s'arrête à `cap`) : se sentir coincé
+        function reachableCells(gridX, gridY, cap) {
+            const seen = new Set([`${gridX},${gridY}`]);
+            const queue = [[gridX, gridY]];
+            for (let i = 0; i < queue.length && seen.size < cap; i++) {
+                const [x, y] = queue[i];
+                for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+                    const nx = x + dx, ny = y + dy, key = `${nx},${ny}`;
+                    if (seen.has(key) || !isGridAccessible(nx, ny) || hasBomb(nx, ny)) continue;
+                    seen.add(key);
+                    queue.push([nx, ny]);
+                }
+            }
+            return seen.size;
+        }
+
+        // Panique (0..1) : fin de manche, danger proche, peu de place pour
+        // bouger, tempérament, et une part de hasard à chaque décision
+        function aiPanic(id, gridX, gridY, inDanger) {
+            const threats = gameState.bombs.filter(b =>
+                (b.x === gridX && Math.abs(b.y - gridY) <= b.range) ||
+                (b.y === gridY && Math.abs(b.x - gridX) <= b.range)).length;
+            const cramped = inDanger && reachableCells(gridX, gridY, 8) < 8 ? 0.3 : 0;
+            const threat = clamp01(threats * 0.35 + enemiesWithin(id, gridX, gridY, 2) * 0.25 + cramped);
+            const raw = 0.45 * endgamePressure() + 0.35 * threat + 0.2 * aiTemper(id) + (Math.random() - 0.5) * 0.3;
+            return clamp01(raw) * aiSettings().nerves;
+        }
+
+        // Audace (0..1) : plus de bombes et de portée = plus de confiance ;
+        // ennemis tout près = elle tente des coups. Les nerveuses osent moins.
+        function aiBoldness(id, aiPlayer, gridX, gridY) {
+            const power = ((aiPlayer.maxBombs || 1) - 1) * 0.15 + ((aiPlayer.bombRange || 2) - 2) * 0.08;
+            const exposed = clamp01(enemiesWithin(id, gridX, gridY, 4) / 2) * 0.3;
+            return clamp01(power + exposed + (0.5 - aiTemper(id)) * 0.2);
+        }
+
+        // Danger que l'IA n'a pas créé elle-même (bombe d'un autre, flammes,
+        // marée, noix de coco) : il lui faut un temps de réaction. Sa propre
+        // bombe, elle sait qu'elle vient de la poser.
+        function dangerFromOthers(id, x, y) {
+            if (floodsSoon(x, y) || coconutThreat(x, y)) return true;
+            if (gameState.explosions.some(e => e.cells.some(c => c.x === x && c.y === y))) return true;
+            return gameState.bombs.some(b => b.playerId !== id &&
+                ((b.x === x && Math.abs(b.y - y) <= b.range) || (b.y === y && Math.abs(b.x - x) <= b.range)));
+        }
+
+        // Réaction d'un joueur (le local, ou une IA simulée par l'hôte)
+        const lastEmoteAt = {};
+        function sendEmote(id, i) {
+            const p = gameState.players[id];
+            if (!gameState.roomId || !gameState.gameStarted || !p || !EMOTES[i]) return false;
+            const now = Date.now();
+            if (now - (lastEmoteAt[id] || 0) < EMOTE_COOLDOWN) return false;
+            lastEmoteAt[id] = now;
+            const emote = { i, at: serverNow() };
+            p.emote = emote; // affichage immédiat
+            database.ref(`games/${gameState.roomId}/players/${id}/emote`).set(emote);
+            return true;
+        }
+        // Réaction encore visible d'un joueur (ou null)
+        function activeEmote(p) {
+            const em = p && p.emote;
+            if (!em || !EMOTES[em.i]) return null;
+            const age = serverNow() - em.at;
+            return age >= 0 && age < EMOTE_MS ? { e: EMOTES[em.i].e, age } : null;
+        }
+
         // Ennemi vivant le plus proche (distance en cases) : les humains ET
         // les autres IA, c'est chacun pour soi
         function nearestEnemy(id, gridX, gridY) {
@@ -2496,14 +2657,18 @@
             });
 
             let nearbyBomb = isNearExplosion(gridX, gridY);
+            const now = Date.now();
+            brain.panic = aiPanic(id, gridX, gridY, nearbyBomb);
+            brain.bold = aiBoldness(id, aiPlayer, gridX, gridY);
 
             //--------------------------------------------------
             // ÉTAPE 1 : décider de poser une bombe (indépendant du mouvement)
             //--------------------------------------------------
             // Ne jamais poser si on est déjà en train de fuir un danger, ou si
             // une bombe est déjà présente sous nos pieds.
+            let placed = false;
             if (!nearbyBomb && !hasBomb(gridX, gridY)) {
-                const placed = tryPlaceAIBomb(id, aiPlayer);
+                placed = tryPlaceAIBomb(id, aiPlayer);
                 // On vient de poser une bombe sous ses propres pieds : il faut
                 // repasser en mode fuite dès ce tick-ci, pas attendre le
                 // prochain cycle de décision 300ms plus tard.
@@ -2537,6 +2702,21 @@
                 if (clean.length > 0) safeDirections = clean;
             }
 
+            // Temps de réaction : un danger créé par un autre n'est pas vu
+            // instantanément (plus long quand elle panique)
+            if (!nearbyBomb) {
+                brain.dangerSeenAt = 0;
+            } else if (!placed && dangerFromOthers(id, gridX, gridY)) {
+                if (!brain.dangerSeenAt) {
+                    brain.dangerSeenAt = now;
+                    brain.reactIn = aiSettings().react * (0.7 + brain.panic * 0.8 + Math.random() * 0.5);
+                }
+                if (now - brain.dangerSeenAt < brain.reactIn) {
+                    note(`Réagit… (panique ${brain.panic.toFixed(2)})`);
+                    return;
+                }
+            }
+
             // Priorité absolue : fuir si une bombe/explosion menace la case actuelle
             if (nearbyBomb) {
                 // En fuite, traverser le RAYON d'une bombe pas encore explosée
@@ -2549,8 +2729,16 @@
                     note("Coincé par les flammes");
                     return;
                 }
-                chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections);
-                note("Fuite de bombe");
+                if (Math.random() < brain.panic * 0.25) {
+                    // Panique : part dans une direction au hasard (sans
+                    // jamais sauter dans une flamme active)
+                    chosenDirection = fireFreeDirections[Math.floor(Math.random() * fireFreeDirections.length)];
+                    note(`Panique ! (${brain.panic.toFixed(2)})`);
+                    if (Math.random() < 0.4) sendEmote(id, 1);
+                } else {
+                    chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections);
+                    note("Fuite de bombe");
+                }
             } else if (safeDirections.length === 0) {
                 // À l'abri, mais toute case adjacente est menacée : ne pas bouger,
                 // attendre que la bombe explose plutôt que de jouer avec le feu.
@@ -2818,13 +3006,17 @@
                 const isStrategic = isStrategicToBomb(id, gridX, gridY, aiPlayer.bombRange);
                 if (!isStrategic) return false;
 
-                // Vérifier qu'une vraie case sûre est atteignable avant l'explosion
-                const hasEscape = hasEscapeRoute(gridX, gridY, aiPlayer.bombRange);
-                if (!hasEscape) return false;
+                // Vérifier qu'une vraie case sûre est atteignable avant
+                // l'explosion. Audacieuse, elle accepte parfois un pas de plus
+                // que ce qu'elle peut garantir : coup osé, elle peut y rester.
+                const bold = aiBrain(id).bold || 0;
+                const daring = bold > 0.4 && Math.random() < bold * 0.5;
+                if (!hasEscapeRoute(gridX, gridY, aiPlayer.bombRange, daring ? 1 : 0)) return false;
 
                 // Chance de base de poser la bombe même quand c'est stratégique,
-                // pour ne pas être 100% déterministe/prévisible
-                if (Math.random() > aiSettings().bombChance) return false;
+                // pour ne pas être 100% déterministe/prévisible (plus haute
+                // quand elle se sent forte)
+                if (Math.random() > Math.min(0.95, aiSettings().bombChance + bold * 0.35)) return false;
 
                 // Créer la référence d'abord pour connaître la vraie clé Firebase
                 const bombRef = database.ref(`games/${gameState.roomId}/bombs`).push();
@@ -2842,7 +3034,7 @@
 
                 // Ajouter la bombe à Firebase avec son id qui correspond à la clé Firebase
                 bombRef.set(newBomb);
-                updateDebugInfo(id, "Bombe posée");
+                updateDebugInfo(id, daring ? `Bombe osée (audace ${bold.toFixed(2)})` : "Bombe posée");
                 return true;
             }
             
@@ -2889,7 +3081,7 @@
         // (gridX, gridY). Une simple case adjacente libre ne suffit pas : avec
         // bombRange >= 2 elle peut rester alignée avec la bombe. On simule la
         // bombe à poser et on réutilise le même BFS que la fuite réelle.
-        function hasEscapeRoute(gridX, gridY, bombRange) {
+        function hasEscapeRoute(gridX, gridY, bombRange, extraSteps = 0) {
             const simulatedBomb = { x: gridX, y: gridY, range: bombRange };
             const bombsBackup = gameState.bombs;
             gameState.bombs = [...bombsBackup, simulatedBomb];
@@ -2905,7 +3097,7 @@
                 const visited = new Set([`${gridX},${gridY}`]);
                 let queue = [{ x: gridX, y: gridY }];
 
-                for (let depth = 0; depth < aiEscapeMaxSteps() && queue.length > 0; depth++) {
+                for (let depth = 0; depth < aiEscapeMaxSteps() + extraSteps && queue.length > 0; depth++) {
                     const nextQueue = [];
                     for (const node of queue) {
                         for (const dir of directions) {
@@ -2950,7 +3142,8 @@
                 debugDiv.textContent = aiIds().map(aiId => {
                     const p = gameState.players[aiId];
                     const last = aiBrain(aiId).history.slice(-1)[0] || '-';
-                    return `${aiId} bombes ${p.maxBombs} portée ${p.bombRange} : ${last}`;
+                    const b = aiBrain(aiId);
+                    return `${aiId} bombes ${p.maxBombs} portée ${p.bombRange} panique ${(b.panic || 0).toFixed(2)} audace ${(b.bold || 0).toFixed(2)} : ${last}`;
                 }).join('\n');
             }
         }
@@ -3639,6 +3832,33 @@
                 top -= 10;
             }
 
+            // Réaction : bulle blanche avec l'emoji, petit « pop » à l'apparition
+            const em = activeEmote(p);
+            if (em) {
+                const pop = Math.min(1, em.age / 150);
+                const fade = Math.min(1, (EMOTE_MS - em.age) / 300);
+                const r = 10 * (0.4 + 0.6 * pop);
+                const cy = top - r - 2;
+                ctx.save();
+                ctx.globalAlpha = fade;
+                ctx.fillStyle = '#fff';
+                ctx.strokeStyle = 'rgba(40, 30, 20, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(x, cy, r, 0, Math.PI * 2);
+                ctx.moveTo(x - 3, cy + r - 1);
+                ctx.lineTo(x, cy + r + 4);
+                ctx.lineTo(x + 3, cy + r - 1);
+                ctx.fill();
+                ctx.stroke();
+                ctx.font = `${Math.round(r * 1.3)}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(em.e, x, cy + 1);
+                ctx.restore();
+                top -= r * 2 + 6;
+            }
+
             // Malus : petit nuage vert qui flotte au-dessus de la tête
             if (p && p.malus && now < (p.malusUntil || 0)) {
                 ctx.save();
@@ -3982,11 +4202,17 @@
         // Créer une nouvelle partie multijoueur : l'hôte (player1) ouvre une
         // salle d'attente. Les amis prennent les places libres, l'hôte peut
         // compléter avec des IA, puis lance la partie (launchGame).
+        // Nom de partie -> clé Firebase : accents, espaces, emojis passent ;
+        // seuls . $ # [ ] / et les caractères de contrôle sont interdits.
+        function cleanRoomName(text) {
+            return String(text).replace(/[.$#\[\]\/\u0000-\u001f\u007f]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 30);
+        }
+
         function createGame() {
             log("Création d'une nouvelle partie multijoueur");
             document.getElementById('resumeBox').style.display = 'none';
             // Générer un code de salle si non spécifié
-            const roomId = roomInput.value || generateId();
+            const roomId = cleanRoomName(roomInput.value) || generateId();
             roomInput.value = roomId;
             gameState.roomId = roomId;
             gameState.playerId = 'player1';
@@ -4016,7 +4242,7 @@
         // Rejoindre une partie existante, sur la première place libre
         function joinExistingGame() {
             log("Tentative de rejoindre une partie existante");
-            const roomId = roomInput.value;
+            const roomId = cleanRoomName(roomInput.value);
             if (!roomId) {
                 alert('Veuillez entrer un code de partie');
                 return;
@@ -4596,6 +4822,13 @@
                 arrowOrder.push(e.key);
             }
             
+            // 1 à 6 : réaction
+            const emoteIndex = '123456'.indexOf(e.key);
+            if (emoteIndex >= 0 && e.key.length === 1 && !e.repeat && gameState.gameStarted &&
+                document.activeElement !== roomInput && document.activeElement !== nameInput) {
+                sendEmote(gameState.playerId, emoteIndex);
+            }
+
             // Touche espace pour poser une bombe
             if (e.key === ' ' && gameState.gameStarted) {
                 placeBomb();
@@ -4979,8 +5212,9 @@
                 const p = gameState.players[id];
                 const score = gameState.match && gameState.match.scores ? gameState.match.scores[id] : 0;
                 const malus = p.malus && Date.now() < (p.malusUntil || 0) ? p.malus : '';
+                const em = activeEmote(p);
                 return [id, nameOf(id), p.character, p.suit, p.alive, !!p.offline, p.maxBombs, p.bombRange, p.speedMultiplier, score,
-                        p.canKick, p.hasDetonator, p.pierce, malus].join(':');
+                        p.canKick, p.hasDetonator, p.pierce, malus, em ? em.e + p.emote.at : ''].join(':');
             }).join('|') + (spritesReady() ? 's' : '');
             if (key !== lastHudKey) {
                 lastHudKey = key;
@@ -5005,6 +5239,7 @@
                             <span class="stat" title="Vitesse"><i class="sprite" style="${spriteCss('bonus_speed', 20)}"></i>${speed}</span>
                         </div>
                         ${powersHtml(p)}
+                        ${activeEmote(p) ? `<span class="card-emote">${activeEmote(p).e}</span>` : ''}
                     </div>`;
                 }).join('');
             }
@@ -5260,6 +5495,17 @@
             if (gameState.gameStarted && me && me.alive && !countdownActive() && !isPaused()) detonateRemoteBombs();
         });
         // Icône de bombe (atlas) et bouton détonateur selon le bonus ramassé
+        // Barre de réactions
+        const emoteBar = document.getElementById('emoteBar');
+        emoteBar.innerHTML = EMOTES.map((em, i) =>
+            `<button type="button" data-emote="${i}" title="${em.label}" aria-label="${em.label}">${em.e}<kbd>${i + 1}</kbd></button>`).join('');
+        emoteBar.addEventListener('click', e => {
+            const b = e.target.closest('button[data-emote]');
+            if (!b) return;
+            sendEmote(gameState.playerId, Number(b.dataset.emote));
+            b.blur(); // Espace ne doit pas « recliquer » le bouton
+        });
+
         function updateTouchControls() {
             if (!touchMode) return;
             const icon = touchBomb.querySelector('i');
