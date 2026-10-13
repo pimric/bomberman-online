@@ -639,10 +639,12 @@
         //   bombChance  : probabilité de poser quand c'est stratégique
         //   wander      : probabilité de flâner au hasard au lieu de chasser
         //   bonusRadius : distance max à laquelle elle va chercher un bonus
+        //   nerves      : sensibilité à la panique (0 = robot, 1 = très nerveuse)
+        //   react       : temps de réaction moyen face à un danger qu'elle n'a pas créé (ms)
         const AI_LEVELS = {
-            facile:    { label: 'Facile',    moveDelay: 380, bombChance: 0.25, wander: 0.35, bonusRadius: 2 },
-            normal:    { label: 'Normal',    moveDelay: 270, bombChance: 0.45, wander: 0.12, bonusRadius: 4 },
-            difficile: { label: 'Difficile', moveDelay: 200, bombChance: 0.6,  wander: 0,    bonusRadius: 5 }
+            facile:    { label: 'Facile',    moveDelay: 380, bombChance: 0.25, wander: 0.35, bonusRadius: 2, nerves: 1,    react: 350 },
+            normal:    { label: 'Normal',    moveDelay: 270, bombChance: 0.45, wander: 0.12, bonusRadius: 4, nerves: 0.7,  react: 230 },
+            difficile: { label: 'Difficile', moveDelay: 200, bombChance: 0.6,  wander: 0,    bonusRadius: 5, nerves: 0.45, react: 140 }
         };
         let aiLevel = 'normal';
         try {
@@ -2441,6 +2443,84 @@
             aiMoveInterval = null;
         }
 
+        //--------------------------------------------------
+        // FACTEUR HUMAIN : panique et audace
+        //--------------------------------------------------
+        // Calculés à chaque décision par l'onglet de l'hôte (rien n'est
+        // synchronisé). Chaque IA tire un tempérament au hasard (plus ou
+        // moins nerveuse), gardé jusqu'à la fin de la partie.
+        const clamp01 = v => Math.max(0, Math.min(1, v));
+        function aiTemper(id) {
+            const brain = aiBrain(id);
+            if (brain.temper === undefined) brain.temper = Math.random();
+            return brain.temper;
+        }
+
+        // Fin de manche : part de l'île déjà inondée (0 au début, 1 quand
+        // il ne reste qu'un tiers des cases)
+        function endgamePressure() {
+            let flooded = 0;
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) if (isFlooded(x, y)) flooded++;
+            }
+            return clamp01(flooded / (GRID_SIZE * GRID_SIZE) / 0.66);
+        }
+
+        // Ennemis vivants à moins de `radius` cases
+        function enemiesWithin(id, gridX, gridY, radius) {
+            return Object.keys(gameState.players).filter(o => {
+                const p = gameState.players[o];
+                return isEnemy(id, o) && p && p.alive && !p.offline &&
+                    Math.abs(Math.floor(p.x / TILE_SIZE) - gridX) + Math.abs(Math.floor(p.y / TILE_SIZE) - gridY) <= radius;
+            }).length;
+        }
+
+        // Cases libres atteignables (s'arrête à `cap`) : se sentir coincé
+        function reachableCells(gridX, gridY, cap) {
+            const seen = new Set([`${gridX},${gridY}`]);
+            const queue = [[gridX, gridY]];
+            for (let i = 0; i < queue.length && seen.size < cap; i++) {
+                const [x, y] = queue[i];
+                for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+                    const nx = x + dx, ny = y + dy, key = `${nx},${ny}`;
+                    if (seen.has(key) || !isGridAccessible(nx, ny) || hasBomb(nx, ny)) continue;
+                    seen.add(key);
+                    queue.push([nx, ny]);
+                }
+            }
+            return seen.size;
+        }
+
+        // Panique (0..1) : fin de manche, danger proche, peu de place pour
+        // bouger, tempérament, et une part de hasard à chaque décision
+        function aiPanic(id, gridX, gridY, inDanger) {
+            const threats = gameState.bombs.filter(b =>
+                (b.x === gridX && Math.abs(b.y - gridY) <= b.range) ||
+                (b.y === gridY && Math.abs(b.x - gridX) <= b.range)).length;
+            const cramped = inDanger && reachableCells(gridX, gridY, 8) < 8 ? 0.3 : 0;
+            const threat = clamp01(threats * 0.35 + enemiesWithin(id, gridX, gridY, 2) * 0.25 + cramped);
+            const raw = 0.45 * endgamePressure() + 0.35 * threat + 0.2 * aiTemper(id) + (Math.random() - 0.5) * 0.3;
+            return clamp01(raw) * aiSettings().nerves;
+        }
+
+        // Audace (0..1) : plus de bombes et de portée = plus de confiance ;
+        // ennemis tout près = elle tente des coups. Les nerveuses osent moins.
+        function aiBoldness(id, aiPlayer, gridX, gridY) {
+            const power = ((aiPlayer.maxBombs || 1) - 1) * 0.15 + ((aiPlayer.bombRange || 2) - 2) * 0.08;
+            const exposed = clamp01(enemiesWithin(id, gridX, gridY, 4) / 2) * 0.3;
+            return clamp01(power + exposed + (0.5 - aiTemper(id)) * 0.2);
+        }
+
+        // Danger que l'IA n'a pas créé elle-même (bombe d'un autre, flammes,
+        // marée, noix de coco) : il lui faut un temps de réaction. Sa propre
+        // bombe, elle sait qu'elle vient de la poser.
+        function dangerFromOthers(id, x, y) {
+            if (floodsSoon(x, y) || coconutThreat(x, y)) return true;
+            if (gameState.explosions.some(e => e.cells.some(c => c.x === x && c.y === y))) return true;
+            return gameState.bombs.some(b => b.playerId !== id &&
+                ((b.x === x && Math.abs(b.y - y) <= b.range) || (b.y === y && Math.abs(b.x - x) <= b.range)));
+        }
+
         // Ennemi vivant le plus proche (distance en cases) : les humains ET
         // les autres IA, c'est chacun pour soi
         function nearestEnemy(id, gridX, gridY) {
@@ -2496,14 +2576,18 @@
             });
 
             let nearbyBomb = isNearExplosion(gridX, gridY);
+            const now = Date.now();
+            brain.panic = aiPanic(id, gridX, gridY, nearbyBomb);
+            brain.bold = aiBoldness(id, aiPlayer, gridX, gridY);
 
             //--------------------------------------------------
             // ÉTAPE 1 : décider de poser une bombe (indépendant du mouvement)
             //--------------------------------------------------
             // Ne jamais poser si on est déjà en train de fuir un danger, ou si
             // une bombe est déjà présente sous nos pieds.
+            let placed = false;
             if (!nearbyBomb && !hasBomb(gridX, gridY)) {
-                const placed = tryPlaceAIBomb(id, aiPlayer);
+                placed = tryPlaceAIBomb(id, aiPlayer);
                 // On vient de poser une bombe sous ses propres pieds : il faut
                 // repasser en mode fuite dès ce tick-ci, pas attendre le
                 // prochain cycle de décision 300ms plus tard.
@@ -2537,6 +2621,21 @@
                 if (clean.length > 0) safeDirections = clean;
             }
 
+            // Temps de réaction : un danger créé par un autre n'est pas vu
+            // instantanément (plus long quand elle panique)
+            if (!nearbyBomb) {
+                brain.dangerSeenAt = 0;
+            } else if (!placed && dangerFromOthers(id, gridX, gridY)) {
+                if (!brain.dangerSeenAt) {
+                    brain.dangerSeenAt = now;
+                    brain.reactIn = aiSettings().react * (0.7 + brain.panic * 0.8 + Math.random() * 0.5);
+                }
+                if (now - brain.dangerSeenAt < brain.reactIn) {
+                    note(`Réagit… (panique ${brain.panic.toFixed(2)})`);
+                    return;
+                }
+            }
+
             // Priorité absolue : fuir si une bombe/explosion menace la case actuelle
             if (nearbyBomb) {
                 // En fuite, traverser le RAYON d'une bombe pas encore explosée
@@ -2549,8 +2648,15 @@
                     note("Coincé par les flammes");
                     return;
                 }
-                chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections);
-                note("Fuite de bombe");
+                if (Math.random() < brain.panic * 0.25) {
+                    // Panique : part dans une direction au hasard (sans
+                    // jamais sauter dans une flamme active)
+                    chosenDirection = fireFreeDirections[Math.floor(Math.random() * fireFreeDirections.length)];
+                    note(`Panique ! (${brain.panic.toFixed(2)})`);
+                } else {
+                    chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections);
+                    note("Fuite de bombe");
+                }
             } else if (safeDirections.length === 0) {
                 // À l'abri, mais toute case adjacente est menacée : ne pas bouger,
                 // attendre que la bombe explose plutôt que de jouer avec le feu.
@@ -2818,13 +2924,17 @@
                 const isStrategic = isStrategicToBomb(id, gridX, gridY, aiPlayer.bombRange);
                 if (!isStrategic) return false;
 
-                // Vérifier qu'une vraie case sûre est atteignable avant l'explosion
-                const hasEscape = hasEscapeRoute(gridX, gridY, aiPlayer.bombRange);
-                if (!hasEscape) return false;
+                // Vérifier qu'une vraie case sûre est atteignable avant
+                // l'explosion. Audacieuse, elle accepte parfois un pas de plus
+                // que ce qu'elle peut garantir : coup osé, elle peut y rester.
+                const bold = aiBrain(id).bold || 0;
+                const daring = bold > 0.4 && Math.random() < bold * 0.5;
+                if (!hasEscapeRoute(gridX, gridY, aiPlayer.bombRange, daring ? 1 : 0)) return false;
 
                 // Chance de base de poser la bombe même quand c'est stratégique,
-                // pour ne pas être 100% déterministe/prévisible
-                if (Math.random() > aiSettings().bombChance) return false;
+                // pour ne pas être 100% déterministe/prévisible (plus haute
+                // quand elle se sent forte)
+                if (Math.random() > Math.min(0.95, aiSettings().bombChance + bold * 0.35)) return false;
 
                 // Créer la référence d'abord pour connaître la vraie clé Firebase
                 const bombRef = database.ref(`games/${gameState.roomId}/bombs`).push();
@@ -2842,7 +2952,7 @@
 
                 // Ajouter la bombe à Firebase avec son id qui correspond à la clé Firebase
                 bombRef.set(newBomb);
-                updateDebugInfo(id, "Bombe posée");
+                updateDebugInfo(id, daring ? `Bombe osée (audace ${bold.toFixed(2)})` : "Bombe posée");
                 return true;
             }
             
@@ -2889,7 +2999,7 @@
         // (gridX, gridY). Une simple case adjacente libre ne suffit pas : avec
         // bombRange >= 2 elle peut rester alignée avec la bombe. On simule la
         // bombe à poser et on réutilise le même BFS que la fuite réelle.
-        function hasEscapeRoute(gridX, gridY, bombRange) {
+        function hasEscapeRoute(gridX, gridY, bombRange, extraSteps = 0) {
             const simulatedBomb = { x: gridX, y: gridY, range: bombRange };
             const bombsBackup = gameState.bombs;
             gameState.bombs = [...bombsBackup, simulatedBomb];
@@ -2905,7 +3015,7 @@
                 const visited = new Set([`${gridX},${gridY}`]);
                 let queue = [{ x: gridX, y: gridY }];
 
-                for (let depth = 0; depth < aiEscapeMaxSteps() && queue.length > 0; depth++) {
+                for (let depth = 0; depth < aiEscapeMaxSteps() + extraSteps && queue.length > 0; depth++) {
                     const nextQueue = [];
                     for (const node of queue) {
                         for (const dir of directions) {
@@ -2950,7 +3060,8 @@
                 debugDiv.textContent = aiIds().map(aiId => {
                     const p = gameState.players[aiId];
                     const last = aiBrain(aiId).history.slice(-1)[0] || '-';
-                    return `${aiId} bombes ${p.maxBombs} portée ${p.bombRange} : ${last}`;
+                    const b = aiBrain(aiId);
+                    return `${aiId} bombes ${p.maxBombs} portée ${p.bombRange} panique ${(b.panic || 0).toFixed(2)} audace ${(b.bold || 0).toFixed(2)} : ${last}`;
                 }).join('\n');
             }
         }
