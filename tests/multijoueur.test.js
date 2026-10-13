@@ -577,6 +577,15 @@ async function scenarioQuatreJoueurs() {
         // On la fige pour la suite (elle pourrait tuer quelqu'un au hasard)
         await A.page.evaluate(() => stopAI());
 
+        // Réaction : B appuie sur « 1 », C voit la bulle sur la fiche de B
+        await B.page.keyboard.press('1');
+        const emoteSeen = await C.page.waitForFunction(() => {
+            const p = gameState.players.player2;
+            return p && p.emote && p.emote.i === 0 && activeEmote(p) &&
+                [...document.querySelectorAll('#hud .card-emote')].some(e => e.textContent === '😂');
+        }, { timeout: 3000 }).then(() => true, () => false);
+        check('Réactions : l’emoji de B s’affiche chez C', emoteSeen);
+
         // B meurt : 3 survivants, la manche continue
         await B.page.evaluate(() => database.ref(`games/${gameState.roomId}/players/player2/alive`).set(false));
         await sleep(1200);
