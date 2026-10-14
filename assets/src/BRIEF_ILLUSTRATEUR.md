@@ -20,7 +20,7 @@ Conseil : livrer lot par lot (ordre D → E → B → C → A) pour valider le s
 
 ## Étape 0 — Planche de style (validation)
 
-Avant tout : 1 personnage (baigneuse, face), 1 sol, 1 mur, 1 cassable, 1 bombe, 1 flamme, 1 bonus, placés côte à côte sur une case de 13×13 simulée. On valide le style, la palette et la lisibilité, puis on lance la production.
+Avant tout : 1 personnage (face), 1 sol, 1 mur, 1 cassable, 1 bombe, 1 flamme, 1 bonus, placés côte à côte sur une case de 13×13 simulée. On valide le style, la palette et la lisibilité, puis on lance la production.
 
 ## Règles de style communes (tous les lots)
 
@@ -44,20 +44,16 @@ Avant tout : 1 personnage (baigneuse, face), 1 sol, 1 mur, 1 cassable, 1 bombe, 
 
 ## Lot A — Personnages (91 images)
 
-**7 personnages × 13 poses.**
+**7 personnages × 13 poses (personnages au choix de l'illustrateur).**
 
-Personnages (nom de fichier = préfixe) :
-1. `baigneuse` — jeune femme en maillot de bain une pièce (la mascotte)
-2. `goeland` — corps de baigneuse, tête de goéland blanc, dessus gris clair, gros bec jaune à bout rouge, air malicieux
-3. `poisson` — tête de poisson-clown orange, deux bandes blanches bordées de noir, petites nageoires sur les côtés, bouche souriante
-4. `tortue` — tête de tortue de mer vert olive, écailles plus claires, bec arrondi, sourire tranquille
-5. `crabe` — tête de crabe ronde rouge orangé, yeux ronds sur pédoncules, petite bouche souriante (mains humaines, pas de pinces)
-6. `flamant` — tête de flamant rose, cou court stylisé, bec recourbé rose clair à bout noir
-7. `dauphin` — tête de dauphin gris clair (pas bleu), menton blanc cassé, rostre court arrondi, grand sourire
+**Les personnages sont libres : l'illustrateur peut tout changer.** Les animaux actuels (goéland, poisson-clown, tortue, crabe, flamant, dauphin) et la baigneuse ne sont qu'une inspiration, rien n'est à conserver. Il peut proposer d'autres personnages (humains, animaux, créatures…), tant que :
 
-Les 6 animaux ont le même corps, la même taille, les mêmes proportions que la baigneuse (seule la tête change). Tous portent des lunettes de soleil noires, lisibles de face et de profil.
+- il y en a **7** au total, bien différents les uns des autres (silhouette et couleurs dominantes distinctes, reconnaissables à 32 px) ;
+- l'univers reste plage / île tropicale, joyeux, tout public (pas de rasta, surfeur ni pirate) ;
+- tous ont la même taille, la même hauteur de pieds et le même jeu de 13 poses ;
+- chacun est nommé par un mot en minuscules, sans accent ni espace (ex. `marin`, `crabe`). Il nous envoie la liste des 7 noms avec un nom d'affichage en français.
 
-**Maillot** : une pièce, **bleu vif uni #1E5BFF**, sans motif, identique sur toutes les images. Le jeu le recolore automatiquement en rouge / vert / jaune / etc. pour les joueurs. Donc : ce bleu exact n'apparaît **nulle part ailleurs** sur le personnage (pas de peau, plume, œil ou accessoire bleu vif) et le maillot est une zone uniforme, sans ombrage d'une autre teinte.
+**Zone recolorable** : chaque personnage a une zone d'un seul **bleu vif uni #1E5BFF** (maillot, short, chemise, tenue… au choix, sans motif ni ombrage d'une autre teinte). Le jeu la recolore automatiquement en rouge / vert / jaune, etc. pour distinguer les 4 joueurs. Ce bleu exact n'apparaît **nulle part ailleurs** sur le personnage (ni peau, ni plume, ni œil, ni accessoire). Les personnages ne doivent pas être eux-mêmes bleu vif ni de la couleur des autres joueurs au point de se confondre avec leur tenue : privilégier des tons neutres ou chauds pour le corps.
 
 **Poses à fournir par personnage (13)** — nom : `<personnage>_<direction>_<n>.png`
 
@@ -70,7 +66,7 @@ Les 6 animaux ont le même corps, la même taille, les mêmes proportions que la
 - **Ne pas fournir** les poses vers la gauche : le jeu les génère en miroir. Le personnage doit donc être symétrique en profil (pas de détail asymétrique indispensable : logo, cicatrice…).
 - **Même position des pieds dans le carré sur les 13 images** (pieds au même niveau, centre du corps au même endroit), sinon le personnage « saute » pendant la marche.
 - Même échelle sur les 13 images (la pose la plus haute tient dans le carré avec 8 px de marge).
-- Exemple pour le goéland : `goeland_down_0.png` … `goeland_right_6.png` (13 fichiers).
+- Exemple pour un personnage nommé `marin` : `marin_down_0.png` … `marin_right_6.png` (13 fichiers).
 
 Total lot A : 7 × 13 = **91**.
 
@@ -159,8 +155,8 @@ Chaque bonus doit avoir une couleur dominante différente des autres pour être 
 1. **Étape 0** — planche de style → validation de notre côté (1 aller-retour max).
 2. **Étape 1** — Lot D (5) + Lot E (7) : 12 images, le plus court, valide le rendu en jeu.
 3. **Étape 2** — Lot B (5) : le décor de base. Test en jeu.
-4. **Étape 3** — Lot A, `baigneuse` seule (13) : valide l'animation de marche (pieds alignés, miroir correct) avant de décliner.
-5. **Étape 4** — Lot A, les 6 animaux (78), un animal à la fois ou tous ensemble.
+4. **Étape 3** — Lot A, un seul personnage (13) : valide l'animation de marche (pieds alignés, miroir correct) avant de décliner. La liste des 7 personnages (noms + idées) est aussi à valider à l'étape 0.
+5. **Étape 4** — Lot A, les 6 autres personnages (78), un à la fois ou tous ensemble.
 6. **Étape 5** — Lot C : 6 cartes (48), un thème à la fois.
 7. **Étape 6** — retouches après intégration en jeu (prévoir 1 tour).
 
@@ -168,4 +164,4 @@ Chaque bonus doit avoir une couleur dominante différente des autres pour être 
 
 ## Ce que fait le jeu ensuite (côté dev, pour info)
 
-Les PNG sont assemblés automatiquement en une seule planche (`tools/build_sprites.py`), réduits à 64 px, et les maillots sont recolorés par le jeu. L'illustrateur n'a rien d'autre à fournir (pas de planche, pas de fond magenta, pas de découpage).
+Les PNG sont assemblés automatiquement en une seule planche (`tools/build_sprites.py`), réduits à 64 px, et la zone bleue des personnages est recolorée par le jeu. L'illustrateur n'a rien d'autre à fournir (pas de planche, pas de fond magenta, pas de découpage).
