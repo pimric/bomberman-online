@@ -308,6 +308,44 @@ async function scenarioPouvoirs() {
             return database.ref(`games/${gameState.roomId}/map/0`).set(row);
         });
 
+        // --- Contrôles : demi-tour immédiat en plein pas (pas d'attente de la fin du pas)
+        await teleport(3, 0);
+        await P.page.keyboard.down('ArrowRight');
+        await sleep(30);
+        await P.page.keyboard.up('ArrowRight');
+        await sleep(55);
+        await P.page.keyboard.down('ArrowLeft');
+        await sleep(30);
+        await P.page.keyboard.up('ArrowLeft');
+        await sleep(150);
+        const turned = await P.page.evaluate(() => gameState.players.player1.x);
+        check('Contrôles : demi-tour en plein pas, sans attendre la fin du pas', turned <= 3 * TILE + TILE / 2 + 3, `x=${Math.round(turned)} (case 3 = 112)`);
+        await sleep(400);
+
+        // --- Terriers et fissures : au hasard mais espacés
+        const spread = await P.page.evaluate(() => {
+            const minDist = (list) => {
+                let m = Infinity;
+                for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++)
+                    m = Math.min(m, Math.abs(list[i][0] - list[j][0]) + Math.abs(list[i][1] - list[j][1]));
+                return m;
+            };
+            const cells = (feat, type) => Object.keys(feat).filter(k => feat[k].t === type).map(k => k.split('_').map(Number));
+            let burrow = Infinity, crack = Infinity, nb = 99, nc = 99, differs = new Set();
+            for (let i = 0; i < 40; i++) {
+                const map = generateMap();
+                const j = generateFeatures('jungle', map), v = generateFeatures('volcan', map);
+                burrow = Math.min(burrow, minDist(cells(j, 'burrow')));
+                crack = Math.min(crack, minDist(cells(v, 'crack')));
+                nb = Math.min(nb, cells(j, 'burrow').length);
+                nc = Math.min(nc, cells(v, 'crack').length);
+                differs.add(cells(j, 'burrow').join('|'));
+            }
+            return { burrow, crack, nb, nc, differs: differs.size };
+        });
+        check('Terriers : 4, espacés (≥ 4 cases) et différents à chaque carte', spread.nb === 4 && spread.burrow >= 4 && spread.differs > 20, JSON.stringify(spread));
+        check('Fissures : espacées (≥ 3 cases entre deux)', spread.nc >= 5 && spread.crack >= 3, JSON.stringify(spread));
+
         // --- Coup de pied : bombe en (2,0), joueur en (1,0) pousse à droite
         await setPlayer({ canKick: true });
         await teleport(2, 0);
