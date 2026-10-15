@@ -1625,6 +1625,23 @@
             return { map, features: generateFeatures(match.theme, map), storm: null, match };
         }
 
+        // Tire jusqu'à `count` cases au hasard dans `cells`, toutes éloignées
+        // d'au moins `minDist` (distance de Manhattan) entre elles et des
+        // cases `avoid`. Si la carte est trop serrée, la distance est réduite
+        // petit à petit : jamais moins de cases que demandé tant qu'il en reste.
+        function spreadPick(cells, count, minDist, avoid = []) {
+            for (let d = minDist; d >= 1; d--) {
+                const chosen = [];
+                for (const c of shuffle([...cells])) {
+                    if (chosen.length >= count) break;
+                    const far = o => Math.abs(o[0] - c[0]) + Math.abs(o[1] - c[1]) >= d;
+                    if (chosen.every(far) && avoid.every(far)) chosen.push(c);
+                }
+                if (chosen.length >= count || d === 1) return chosen;
+            }
+            return [];
+        }
+
         // Éléments propres au thème, placés loin des coins de départ
         function generateFeatures(theme, map) {
             const features = {};
@@ -1642,12 +1659,24 @@
 
             if (theme === 'volcan' || theme === 'ponton') {
                 // fissures sur le sable visible seulement (plus de trou surprise
-                // sous un tonneau) : on voit toujours où un trou peut s'ouvrir
-                sand.slice(0, Math.round(sand.length * 0.15)).forEach(([x, y]) => put(x, y, { t: 'crack', s: 1 }));
+                // sous un tonneau), au hasard mais espacées (3 cases au moins
+                // entre deux) : jamais de nid de trous qui piège
+                spreadPick(sand, Math.round(sand.length * 0.15), 4).forEach(([x, y]) => put(x, y, { t: 'crack', s: 1 }));
             } else if (theme === 'jungle') {
-                const burrows = sand.splice(0, 4);
-                for (let i = 0; i + 1 < burrows.length; i += 2) {
-                    const [a, b] = [burrows[i], burrows[i + 1]];
+                // 4 terriers au hasard, bien espacés (5 cases au moins), reliés
+                // deux à deux : une paire proche serait inutile, on relie donc
+                // les plus éloignés entre eux
+                const burrows = spreadPick(sand, 4, 5);
+                const pairs = [];
+                if (burrows.length >= 2) {
+                    const dist = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+                    const rest = burrows.slice(1);
+                    rest.sort((a, b) => dist(burrows[0], b) - dist(burrows[0], a));
+                    pairs.push([burrows[0], rest[0]]);
+                    if (rest.length >= 3) pairs.push([rest[1], rest[2]]);
+                }
+                sand.splice(0, sand.length, ...sand.filter(c => !burrows.includes(c)));
+                for (const [a, b] of pairs) {
                     put(a[0], a[1], { t: 'burrow', to: featKey(b[0], b[1]) });
                     put(b[0], b[1], { t: 'burrow', to: featKey(a[0], a[1]) });
                 }
@@ -2001,6 +2030,29 @@
             return null;
         }
 
+        // Appui bref : une flèche tapée en plein pas, relâchée avant la fin
+        // du pas, serait perdue. On la garde PENDING_KEY_MS pour la jouer à
+        // l'arrivée sur la case (virage au bon moment, sans latence).
+        const PENDING_KEY_MS = 250;
+        let pendingArrow = null; // { key, at }
+
+        // Demi-tour en plein pas : on repart tout de suite vers la case d'où
+        // l'on vient au lieu d'attendre la fin du pas. Renvoie true si fait.
+        function reverseStep(entity, dx, dy, now) {
+            if (!entity.moving) return false;
+            if (hasMalus(entity, 'inverse')) { dx = -dx; dy = -dy; }
+            if (dx !== -Math.sign(entity.toX - entity.fromX) || dy !== -Math.sign(entity.toY - entity.fromY)) return false;
+            const ox = Math.floor(entity.fromX / TILE_SIZE), oy = Math.floor(entity.fromY / TILE_SIZE);
+            if (!isGridAccessible(ox, oy) || hasBomb(ox, oy)) return false;
+            const speed = (entity.speedMultiplier || 1) * (hasMalus(entity, 'lent') ? 0.5 : 1);
+            const duration = MOVE_DURATION / speed;
+            const t = Math.min(1, Math.max(0, (now - entity.moveStart) / duration));
+            [entity.fromX, entity.toX] = [entity.toX, entity.fromX];
+            [entity.fromY, entity.toY] = [entity.toY, entity.fromY];
+            entity.moveStart = now - (1 - t) * duration;
+            return true;
+        }
+
         // Mettre à jour l'état du jeu
         function update() {
             if (!gameState.roomId || !gameState.playerId || !gameState.gameStarted) return;
@@ -2021,10 +2073,17 @@
                 // pas de trame perdue entre deux cases (réactivité)
                 if (advanceEntityMovement(player, now)) syncMovement(gameState.playerId, player, now);
                 if (!countdownActive()) {
-                    const dir = heldDirection();
-                    if (dir && stepEntityOnGrid(player, dir[0], dir[1], now)) {
-                        advanceEntityMovement(player, now);
-                        syncMovement(gameState.playerId, player, now);
+                    if (pendingArrow && now - pendingArrow.at > PENDING_KEY_MS) pendingArrow = null;
+                    const fromTap = !!pendingArrow;
+                    const dir = fromTap ? ARROW_DIRS[pendingArrow.key] : heldDirection();
+                    if (dir) {
+                        const done = player.moving ? reverseStep(player, dir[0], dir[1], now)
+                                                   : stepEntityOnGrid(player, dir[0], dir[1], now);
+                        if (done) {
+                            advanceEntityMovement(player, now);
+                            syncMovement(gameState.playerId, player, now);
+                            pendingArrow = null;
+                        }
                     }
                 }
 
@@ -2554,9 +2613,8 @@
         // Panique (0..1) : fin de manche, danger proche, peu de place pour
         // bouger, tempérament, et une part de hasard à chaque décision
         function aiPanic(id, gridX, gridY, inDanger) {
-            const threats = gameState.bombs.filter(b =>
-                (b.x === gridX && Math.abs(b.y - gridY) <= b.range) ||
-                (b.y === gridY && Math.abs(b.x - gridX) <= b.range)).length;
+            const here = `${gridX},${gridY}`;
+            const threats = gameState.bombs.filter(b => bombFlameKeys(b).has(here)).length;
             const cramped = inDanger && reachableCells(gridX, gridY, 8) < 8 ? 0.3 : 0;
             const threat = clamp01(threats * 0.35 + enemiesWithin(id, gridX, gridY, 2) * 0.25 + cramped);
             const raw = 0.45 * endgamePressure() + 0.35 * threat + 0.2 * aiTemper(id) + (Math.random() - 0.5) * 0.3;
@@ -2577,8 +2635,8 @@
         function dangerFromOthers(id, x, y) {
             if (floodsSoon(x, y) || coconutThreat(x, y)) return true;
             if (gameState.explosions.some(e => e.cells.some(c => c.x === x && c.y === y))) return true;
-            return gameState.bombs.some(b => b.playerId !== id &&
-                ((b.x === x && Math.abs(b.y - y) <= b.range) || (b.y === y && Math.abs(b.x - x) <= b.range)));
+            const key = `${x},${y}`;
+            return gameState.bombs.some(b => b.playerId !== id && bombFlameKeys(b).has(key));
         }
 
         // Réaction d'un joueur (le local, ou une IA simulée par l'hôte)
@@ -2736,7 +2794,7 @@
                     note(`Panique ! (${brain.panic.toFixed(2)})`);
                     if (Math.random() < 0.4) sendEmote(id, 1);
                 } else {
-                    chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections);
+                    chosenDirection = getBestEscapeDirection(gridX, gridY, fireFreeDirections, brain);
                     note("Fuite de bombe");
                 }
             } else if (safeDirections.length === 0) {
@@ -2770,7 +2828,11 @@
 
             // Lancer le pas de grille dans la direction choisie (une case, comme le joueur)
             if (chosenDirection) {
-                const started = stepEntityOnGrid(aiPlayer, chosenDirection.dx, chosenDirection.dy, Date.now());
+                // Noix de coco pourrie « inverse » : le pas est inversé par
+                // stepEntityOnGrid, on le re-inverse pour qu'elle aille bien
+                // où elle a décidé (sinon elle restait coincée sous sa bombe)
+                const flip = hasMalus(aiPlayer, 'inverse') ? -1 : 1;
+                const started = stepEntityOnGrid(aiPlayer, chosenDirection.dx * flip, chosenDirection.dy * flip, Date.now());
 
                 if (started) {
                     // Mémoriser le dernier mouvement pour éviter les aller-retours
@@ -2821,6 +2883,10 @@
 
             // 3. Brique qui rapproche de l'ennemi (score : distance brique-ennemi,
             // puis longueur du chemin). Repli : case la plus proche de l'ennemi.
+            // Pas d'aller-retour : on garde le même objectif tant qu'il vaut
+            // presque autant, et on évite de repartir d'où l'on vient.
+            const brain = aiBrain(id);
+            const last = brain.lastMove;
             let best = null, bestScore = Infinity;
             for (const n of nodes) {
                 let brick = Infinity;
@@ -2830,11 +2896,65 @@
                         brick = Math.min(brick, toEnemy(x, y));
                     }
                 }
-                const score = brick < Infinity ? brick * 3 + n.dist : 1000 + toEnemy(n.x, n.y) * 3 + n.dist;
+                let score = brick < Infinity ? brick * 3 + n.dist : 1000 + toEnemy(n.x, n.y) * 3 + n.dist;
+                if (n.first && n.first.dx === -last.dx && n.first.dy === -last.dy && (last.dx || last.dy)) score += 3;
+                if (brain.goal === `${n.x},${n.y}`) score -= 2.5;
                 if (score < bestScore) { bestScore = score; best = n; }
             }
             if (!best) return null;
+            brain.goal = `${best.x},${best.y}`;
             return { dir: best.first, label: best.first ? "Vers brique" : "Devant brique" };
+        }
+
+        // Cases touchées par la flamme d'une bombe, comme explodeBomb : arrêtée
+        // par un mur ou la mer, elle s'arrête sur une brique (sauf flamme
+        // perçante). Sans cela l'IA croyait dangereux tout ce qui est aligné
+        // avec une bombe, même derrière un palmier : elle fuyait pour rien et
+        // se croyait coincée.
+        const AI_WALL_AWARE = false;
+        function bombFlameKeys(bomb) {
+            const keys = new Set([`${bomb.x},${bomb.y}`]);
+            for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                for (let i = 1; i <= bomb.range; i++) {
+                    const x = bomb.x + dx * i, y = bomb.y + dy * i;
+                    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) break;
+                    keys.add(`${x},${y}`);
+                    // Prudence : l'IA ne compte PAS sur les murs et les briques
+                    // pour arrêter la flamme (essayé : plus de suicides, elle
+                    // se croit à l'abri trop près de sa bombe)
+                    if (AI_WALL_AWARE) {
+                        const tile = gameState.map[y][x];
+                        if (tile === TILE_TYPES.WALL || isFlooded(x, y)) { keys.delete(`${x},${y}`); break; }
+                        if (tile === TILE_TYPES.BRICK && !bomb.pierce) break;
+                    }
+                }
+            }
+            return keys;
+        }
+
+        // Toutes les cases menacées par les bombes posées, réactions en chaîne
+        // comprises (une bombe prise dans une flamme explose aussitôt). En
+        // cache 40 ms : le BFS de l'IA l'interroge des centaines de fois.
+        const dangerCache = { bombs: null, n: -1, t: 0, set: null };
+        function bombDangerSet() {
+            const now = Date.now();
+            const c = dangerCache;
+            if (c.bombs === gameState.bombs && c.n === gameState.bombs.length && now - c.t < 40) return c.set;
+            const set = new Set();
+            const done = new Set();
+            const queue = gameState.bombs.slice();
+            while (queue.length) {
+                const bomb = queue.pop();
+                if (done.has(bomb)) continue;
+                done.add(bomb);
+                const flames = bombFlameKeys(bomb);
+                flames.forEach(k => set.add(k));
+                for (const other of gameState.bombs) {
+                    if (!done.has(other) && flames.has(`${other.x},${other.y}`)) queue.push(other);
+                }
+            }
+            Object.assign(c, { bombs: gameState.bombs, n: gameState.bombs.length, t: now, set });
+            return set;
         }
 
         // Vérifier si l'IA est près d'une explosion imminente ou en cours.
@@ -2843,20 +2963,15 @@
         // 300ms, attendre la dernière seconde pour fuir ne laisse pas assez de
         // pas de grille pour sortir de la zone si le chemin est encombré.
         function isNearExplosion(gridX, gridY) {
-            const dangerBombs = gameState.bombs.filter(bomb => {
-                const distX = Math.abs(bomb.x - gridX);
-                const distY = Math.abs(bomb.y - gridY);
-                // Si dans la portée potentielle de la bombe (ligne ou colonne)
-                return (distX <= bomb.range && distY === 0) ||
-                       (distY <= bomb.range && distX === 0);
-            });
+            // Dans la flamme d'une bombe (murs et briques arrêtent la flamme)
+            const inBombFlames = bombDangerSet().has(`${gridX},${gridY}`);
 
             // Vérifier les explosions actives
             const inExplosion = gameState.explosions.some(explosion => {
                 return explosion.cells.some(cell => cell.x === gridX && cell.y === gridY);
             });
 
-            return dangerBombs.length > 0 || inExplosion || floodsSoon(gridX, gridY) || coconutThreat(gridX, gridY);
+            return inBombFlames || inExplosion || floodsSoon(gridX, gridY) || coconutThreat(gridX, gridY);
         }
 
         // La marée arrive sur cette case dans moins de AI_TIDE_MARGIN ms ?
@@ -2870,13 +2985,7 @@
         // fuite plutôt que de simplement les pénaliser par un score.
         function isCellDangerous(x, y) {
             if (floodsSoon(x, y) || coconutThreat(x, y)) return true;
-            const inBombRange = gameState.bombs.some(bomb => {
-                const distX = Math.abs(bomb.x - x);
-                const distY = Math.abs(bomb.y - y);
-                return (distX === 0 && distY <= bomb.range) ||
-                       (distY === 0 && distX <= bomb.range);
-            });
-            if (inBombRange) return true;
+            if (bombDangerSet().has(`${x},${y}`)) return true;
 
             return gameState.explosions.some(explosion => {
                 return explosion.cells.some(cell => cell.x === x && cell.y === y);
@@ -2889,7 +2998,7 @@
         // (même ligne/colonne), ce qui faisait tourner l'IA en boucle entre
         // quelques cases toujours dangereuses. On fait donc un BFS pour trouver
         // la case sûre la plus proche, puis on renvoie le premier pas du chemin.
-        function getBestEscapeDirection(gridX, gridY, validDirections) {
+        function getBestEscapeDirection(gridX, gridY, validDirections, brain = null) {
             const directions = [
                 { dx: 0, dy: -1 },
                 { dx: 0, dy: 1 },
@@ -2911,10 +3020,20 @@
             const MAX_DEPTH = 12; // largement suffisant pour sortir d'une portée de bombe usuelle
 
             for (let depth = 0; depth < MAX_DEPTH && queue.length > 0; depth++) {
-                for (const node of queue) {
-                    if (!isCellDangerous(node.x, node.y)) {
-                        return node.firstStep;
-                    }
+                // Toutes les cases sûres les plus proches : on ne prend pas la
+                // première venue (ordre fixe haut/bas/gauche/droite, qui
+                // faisait zigzaguer) mais la meilleure : pas de demi-tour, de
+                // la place autour (pas d'impasse), le même sens qu'avant.
+                const safeNodes = queue.filter(node => !isCellDangerous(node.x, node.y));
+                if (safeNodes.length > 0) {
+                    const last = brain ? brain.lastMove : { dx: 0, dy: 0 };
+                    const open = node => directions.filter(d => isGridAccessible(node.x + d.dx, node.y + d.dy) &&
+                        !hasBomb(node.x + d.dx, node.y + d.dy) && !isCellDangerous(node.x + d.dx, node.y + d.dy)).length;
+                    const score = node => open(node) * 1.5
+                        - (node.firstStep.dx === -last.dx && node.firstStep.dy === -last.dy && (last.dx || last.dy) ? 4 : 0)
+                        + (node.firstStep.dx === last.dx && node.firstStep.dy === last.dy ? 1 : 0)
+                        + Math.random() * 0.5;
+                    return safeNodes.reduce((a, b) => score(b) > score(a) ? b : a).firstStep;
                 }
 
                 const nextQueue = [];
@@ -3011,7 +3130,7 @@
                 // que ce qu'elle peut garantir : coup osé, elle peut y rester.
                 const bold = aiBrain(id).bold || 0;
                 const daring = bold > 0.4 && Math.random() < bold * 0.5;
-                if (!hasEscapeRoute(gridX, gridY, aiPlayer.bombRange, daring ? 1 : 0)) return false;
+                if (!hasEscapeRoute(gridX, gridY, aiPlayer.bombRange, daring ? 1 : 0, !!aiPlayer.pierce)) return false;
 
                 // Chance de base de poser la bombe même quand c'est stratégique,
                 // pour ne pas être 100% déterministe/prévisible (plus haute
@@ -3081,8 +3200,8 @@
         // (gridX, gridY). Une simple case adjacente libre ne suffit pas : avec
         // bombRange >= 2 elle peut rester alignée avec la bombe. On simule la
         // bombe à poser et on réutilise le même BFS que la fuite réelle.
-        function hasEscapeRoute(gridX, gridY, bombRange, extraSteps = 0) {
-            const simulatedBomb = { x: gridX, y: gridY, range: bombRange };
+        function hasEscapeRoute(gridX, gridY, bombRange, extraSteps = 0, pierce = false) {
+            const simulatedBomb = { x: gridX, y: gridY, range: bombRange, pierce };
             const bombsBackup = gameState.bombs;
             gameState.bombs = [...bombsBackup, simulatedBomb];
 
@@ -4820,6 +4939,7 @@
                 const i = arrowOrder.indexOf(e.key);
                 if (i >= 0) arrowOrder.splice(i, 1);
                 arrowOrder.push(e.key);
+                if (!e.repeat) pendingArrow = { key: e.key, at: Date.now() };
             }
             
             // 1 à 6 : réaction
