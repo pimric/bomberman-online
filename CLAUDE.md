@@ -63,4 +63,6 @@ Extraire le bloc `<script>` de `game.html` vers un .js temporaire puis `node --c
 ## État et prochaine étape
 Tout le périmètre Bomberman est fait : 4 joueurs (IA, équipes), personnages et maillots, 7 cartes à mécaniques, réglages, tactile, pause, pseudos, reconnexion, relais d'hôte, salle d'attente. `npm test` validé sur la vraie base : 132/132 sur le PC Windows de l'utilisateur (Node portable dans Downloads) et sur GitHub Actions. Reste : validation en jeu à la main (reconnexion entre vrais appareils, équilibrage des cartes). Autres jeux : après Bomberman complet.
 
+Suite prévue : mini-jeux 2-4 joueurs (Mario Party/WarioWare), à reprendre une fois Bomberman validé en jeu — plan et catalogue dans `docs/MINIJEUX.md`.
+
 Domaine : islandbomber.databyric.fr (CNAME sur main, le récupérer avant chaque mise en ligne).
